@@ -1,0 +1,346 @@
+TAGS:
+#.EQUIVALENT
+#.LOGICALLY_EQUIVALENT
+#.JENA_FORMAT_ERROR
+#.INEQUIVALENT
+#.NOT_YET_IMPLEMENTED
+
+=== Question ID: WebQTrn-3513_7c4117891abf63781b892537979054c6 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-2136_d95da5fb8a16d81fe56cd4ce00843254 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-2360_a40a0d50b9a1006e2d254705d46345ea ===
+#EQUIVALENT
+
+=== Question ID: WebQTest-415_b6ad66a3f1f515d0688c346e16d202e6 ===
+#EQUIVALENT
+
+=== Question ID: WebQTest-341_0f5ccea2d11b712eda64ebf2f6aeb1ee ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-3239_5e43a21c08076aabc07f1a6fd6ae6bb9 ===
+#JENA_FORMAT_ERROR
+?sk1 <= "1996-12-31"^^xsd:dateTime not wrapped in FILTER()
+inside of EXISTS{}
+maybe?
+
+=== Question ID: WebQTest-1085_1cffc5c553afc1802970e8a6064cac32 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-2581_321be15dae483ed949b74cf01e259708 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-1695_169b16997f31147833cb12147ed060bb ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-2773_7f835727d3cecbcb6c6b48db1fe147b9 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-2518_1ef15e22372df70baf01b72850deb14d ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-2946_93c6dae3d218dbe112d4120f45c93298 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-3430_b427773422892f8fd251d3a52b01585b ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-2358_4e6ec1c814181157f8b2ec86daa6e6e0 ===
+#EQUIVALENT
+
+=== Question ID: WebQTest-1556_f58b33790040a7ff120472d8609ef82e ===
+#NOT_YET_IMPLEMENTED
+this requires ARGMAX to work
+
+=== Question ID: WebQTest-2008_8c6b952c6bd963f0ece4e401c9eb731a ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-388_72afc30add424e52cbe00b736509ec22 ===
+#EQUIVALENT
+
+=== Question ID: WebQTest-923_e3a2d3d50bac69d563de83a7f72eafc0 ===
+#NOT_YET_IMPLEMENTED
+the SExpr is exactly the same, except for internal ordering at the last level. There is a filter that makes a variable a String Constant. My code doesnt handle filters yet so the ordering does not know this is a constant.
+
+=== Question ID: WebQTrn-37_51530e5585466e3d69fbf894a0125e3b ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-2362_e947d8eac3c8342630bdaa12e7ac0ae5 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-2678_93995ecbdd166fc16365a56ed489eec0 ===
+#NOT_YET_IMPLEMENTED
+this requires ARGMIN
+
+=== Question ID: WebQTrn-3257_f085fa4c2b6c7af6fd1f07e269a418de ===
+#JENA_FORMAT_ERROR
+"<=" inside of EXISTS{} produces jena error, dont know what format jena expects here
+this might very well be because my sparql fixer function is just wrong
+
+=== Question ID: WebQTrn-2649_49cff836e2d4d893a9e364573ab1e3c2 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-1221_edf6a52008463727e837bd3577442966 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-2272_dfad75afd3c40503f595b4cb6acc43a5 ===
+#JENA_FORMAT_ERROR
+"<=" inside of EXISTS{} produces jena error, dont know what format jena expects here
+this might very well be because my sparql fixer function is just wrong
+
+=== Question ID: WebQTrn-2449_a2debf685e0c50491e35a9cf7a1e9ade ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-3727_3d784c638d4b044d17ab942ee87db9cf ===
+#NOT_YET_IMPLEMENTED
+this requires ARGMAX to work
+
+=== Question ID: WebQTrn-0_4 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-431_593bfb1e8da51c4ccd9f768e8f3acd97 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-401_0db5dafcef666da2d314e42c8fbe8ecf ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-2591_5bc74979fc1292d14458ccc3a131a6e6 ===
+#JENA_FORMAT_ERROR
+have to check what was sent to jena, but the original sparql does not do a newline after a UNION{} and puts a triple directly after without newline
+
+=== Question ID: WebQTrn-3693_d0d5f9f0ae25465e1efba1abf9a39089 ===
+#EQUIVALENT
+
+=== Question ID: WebQTest-1502_e156bf65419139d44754fb81aa3e30b8 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-649_393a33dcb20ef2557af16ed69eb41e7a ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-3322_1fec20005da44b5d36882c91119c3be3 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-3696_b874dcb19fa3a6c4e6037dc13f1f3bc4 ===
+#JENA_FORMAT_ERROR
+"<=" inside of EXISTS{} produces jena error, dont know what format jena expects here
+this might very well be because my sparql fixer function is just wrong
+
+=== Question ID: WebQTrn-1805_29f5e796d4d3b8d50fd13c5423e9d67a ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-2074_51ba1687982fdf381c47b15468788107 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-2916_96417e4d721f5c0e2c9079454df0af5b ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-3430_d50047bd776a584de496bc338741909f ===
+#NOT_YET_IMPLEMENTED
+they have a date constant as in "1943-03-20^^http://www.w3.org/2001/XMLSchema#dateTime"
+this just gets converted to "1943-03-20" in my current implementation
+
+=== Question ID: WebQTest-1829_f5779141967bbbc15b40ea3d5df71e93 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-1073_6137d442d446712c83821b5d4d7ce909 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-934_02aae167a8fa9f7d45daab265ac650cd ===
+#INEQUIVALENT
+ordering is different, but it should produce the same results
+
+#NOT_YET_IMPLEMENTED
+date constant not recognized
+
+=== Question ID: WebQTest-1734_49842e208a5dd584154dd0a96881bc05 ===
+#NOT_YET_IMPLEMENTED
+ARGMIN required
+
+=== Question ID: WebQTrn-1246_6aaf65a9b9e1420f46268574f6eb0d03 ===
+#EQUIVALENT
+
+=== Question ID: WebQTest-339_244bb2aa59e57073ae86e6b6cd61e9ad ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-2843_8d050e0b9815f52560ec1341f623a650 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-2377_0d617679d6e6d2f4a6599b2e2d8aad1f ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-633_275abff5d62790363fe8bc0387660115 ===
+#EQUIVALENT
+
+=== Question ID: WebQTest-1363_a61682af60296dc31292d10f056f59d2 ===
+#NOT_YET_IMPLEMENTED
+date constant not recognized
+
+=== Question ID: WebQTrn-354_de7f547f53d6df683441d59c9f078de5 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-343_29c81279ed9a982e12f82e764083db76 ===
+#NOT_YET_IMPLEMENTED
+int is not marked as such in my output
+
+=== Question ID: WebQTest-1427_b18e90832ea61529c16de206eaf1ddfc ===
+#NOT_YET_IMPLEMENTED
+date constant not recognized
+
+=== Question ID: WebQTrn-7_e8adb138a65423c2bcb6f7b8a098630c ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-2475_8beeab4d16cae654aca726b5a38e7f39 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-3622_9a2bafab65209761102f3d33d79454b1 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-1231_a712de1420f327914fd5d0dd6e7faaa8 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-3586_5d57dccf0e15ea5217d602921a92adee ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-1022_37d11443be6fac4198c20dc3aa292ad8 ===
+#EQUIVALENT
+
+=== Question ID: WebQTest-1327_e3691b7d738d0c4fb9da2f1bd4c9b90f ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-3549_d55b6eb833a7c034b003fbaf53351a7d ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-1827_96417e4d721f5c0e2c9079454df0af5b ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-2349_e831da3802943dad506eb1e3fb611847 ===
+#JENA_FORMAT_ERROR
+probably incorrect (): has x == y || a == b instead of ((x == y) || (a == b))
+check this again
+
+=== Question ID: WebQTrn-608_12214188878adf79aec0d51957fbbc5e ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-1898_43af4daddf93f884aa6724b4a78111a1 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-3450_59208084cbd242d772498015ecdc567b ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-2277_f21a9d4b1e98d5b7e3c57e4b34448cfb ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-3509_6227cb6944276fc33277773723769607 ===
+#EQUIVALENT
+
+=== Question ID: WebQTest-665_b945c4d9e0592d6edf3d51db7581f53d ===
+#EQUIVALENT
+
+=== Question ID: WebQTest-145_ec2b1e4efee18b8fdba9e665a542194d ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-1358_89670933168c3f4e5195a241f9d46e76 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-3763_c707414f103503f2530fc654a85645fe ===
+#INEQUIVALENT
+ordering is different, but it should produce the same results
+
+=== Question ID: WebQTest-1556_852ae10314bb05a85906d9d65112e76e ===
+#NOT_YET_IMPLEMENTED
+ARGMAX required
+
+=== Question ID: WebQTrn-2191_1032b444706847bc45f8df119e2b11dc ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-2053_74c5edd9a79d51772446ff4746bd318f ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-406_cb60fbc3dea230fc32682cbb8556ba62 ===
+#EQUIVALENT
+
+=== Question ID: WebQTest-1102_872253e47dd6ddaa213ff31eeda8783b ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-2556_843715b5d1b0569540e0316e66763a38 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-560_09ddfb63672d22c8ffe6222b8e80cf94 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-932_09020cbb000c86fda5910ec084690246 ===
+#EQUIVALENT
+
+=== Question ID: WebQTest-305_020f93c678f201a55199a0c40d829467 ===
+#JENA_FORMAT_ERROR
+"<=" inside of EXISTS{} produces jena error, dont know what format jena expects here
+this might very well be because my sparql fixer function is just wrong
+
+=== Question ID: WebQTrn-911_bce97f775d11e9e17634619b1a51e310 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-1512_52cbd36b86588e3b6e38b0ba8dc53c62 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-3513_2e46111a46d9176e1e8ef418429e90cb ===
+#EQUIVALENT
+
+=== Question ID: WebQTest-847_682800b1263c4a6d5b650e4196fc2b7d ===
+#JENA_FORMAT_ERROR
+"<=" inside of EXISTS{} produces jena error, dont know what format jena expects here
+this might very well be because my sparql fixer function is just wrong
+
+=== Question ID: WebQTrn-197_804561da34d46ed80011e5cc366477a3 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-150_523337b5403215b400d0c4df70ea49a7 ===
+#EQUIVALENT
+
+=== Question ID: WebQTest-589_97440c6c536f1672835d4cfecf6c698b ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-2246_89ad938188e36a4d053dc1c8cdf90a64 ===
+#INEQUIVALENT
+ordering is different, but it should produce the same results
+
+=== Question ID: WebQTest-963_6db07b41dee74826ea7ebcda7dd4482f ===
+#JENA_FORMAT_ERROR
+"<=" inside of EXISTS{} produces jena error, dont know what format jena expects here
+this might very well be because my sparql fixer function is just wrong
+
+=== Question ID: WebQTrn-768_cf9ffbb57f2b9e73dca2d2492121f242 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-1946_89ad938188e36a4d053dc1c8cdf90a64 ===
+#NOT_YET_IMPLEMENTED
+the SExpr is exactly the same, except for internal ordering at the last level. There is a filter that makes a variable a String Constant. My code doesnt handle filters yet so the ordering does not know this is a constant.
+
+=== Question ID: WebQTest-845_42ffcb7805461a6aa9087d302f9fe1f7 ===
+#JENA_FORMAT_ERROR
+"<=" inside of EXISTS{} produces jena error, dont know what format jena expects here
+this might very well be because my sparql fixer function is just wrong
+
+=== Question ID: WebQTest-876_a9122e6c3ec58aea7483e18c7074128a ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-3079_872253e47dd6ddaa213ff31eeda8783b ===
+#JENA_FORMAT_ERROR
+"<=" inside of EXISTS{} produces jena error, dont know what format jena expects here
+this might very well be because my sparql fixer function is just wrong
+
+=== Question ID: WebQTrn-2849_8e65d827de2fe8fd8b11773997effdf0 ===
+#EQUIVALENT
+
+=== Question ID: WebQTest-686_94de6b54e2bc85073a96d6b21694da65 ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-1214_e8b7b55c54a4b3523a2a3036bd255b1a ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-1825_3dda6298595e4f26e293908df47bbd2a ===
+#EQUIVALENT
+
+=== Question ID: WebQTrn-1228_d1ba823e9ae370938293b41f7096fc72 ===
+#EQUIVALENT
