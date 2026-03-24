@@ -5,7 +5,6 @@ from collections import defaultdict
 from sexpdata import loads
 from pprint import pprint
 from collections import deque
-import json
 
 
 import re
@@ -66,15 +65,29 @@ def normalize(x):
 def is_variable(x):
     return isinstance(x, str) and x.startswith("?")
 
-def extract_select_var(ast):
-    if normalize(ast[0]) == 'project':
-        return normalize(ast[1][0])
+def extract_select_vars(ast):
+    """
+    Recursively extract all variables listed in a SPARQL project clause.
+    Returns a list of variable names (e.g., ['?person', '?startDate']).
+    """
+    vars_list = []
 
-    for child in ast:
-        if isinstance(child, list):
-            res = extract_select_var(child)
-            if res:
-                return res
+    if isinstance(ast, list):
+        head = normalize(ast[0])
+        if head == 'project' and len(ast) > 1:
+            # ast[1] is the list of projected vars
+            for v in ast[1]:
+                v_norm = normalize(v)
+                if is_variable(v_norm):
+                    vars_list.append(v_norm)
+
+        # Recurse into children
+        for child in ast:
+            if isinstance(child, list):
+                vars_list.extend(extract_select_vars(child))
+
+    return vars_list
+
 
 def extract_all_triples(node):
     triples = []
@@ -123,6 +136,113 @@ def build_graph(triples):
 
     # return as list
     return {k: list(v) for k, v in graph.items()}
+
+
+def split_into_subgraphs(graph):
+    """
+    Splits a graph into connected subgraphs.
+
+    Input:
+        graph: dict[node] -> list of (pred, other, direction)
+
+    Output:
+        list of subgraph dicts (same structure as input graph)
+    """
+
+    visited = set()
+    subgraphs = []
+
+    for start in graph:
+        if start in visited:
+            continue
+
+        # BFS to collect one connected component
+        queue = deque([start])
+        component_nodes = set()
+
+        while queue:
+            node = queue.popleft()
+            if node in visited:
+                continue
+
+            visited.add(node)
+            component_nodes.add(node)
+
+            for _, neighbor, _ in graph.get(node, []):
+                if neighbor not in visited:
+                    queue.append(neighbor)
+
+        # Build subgraph from collected nodes
+        subgraph = {}
+        for node in component_nodes:
+            subgraph[node] = [
+                (pred, other, direction)
+                for (pred, other, direction) in graph.get(node, [])
+                if other in component_nodes
+            ]
+
+        subgraphs.append(subgraph)
+
+    return subgraphs
+
+
+def find_object_nodes(graph):
+    object_nodes = set()
+
+    for node, edges in graph.items():
+        for pred, other, direction in edges:
+            if direction == "subject":
+                # node --subject--> other
+                # => other is object
+                object_nodes.add(other)
+
+    return object_nodes
+
+def select_root_by_object_rule(graph):
+    """
+    Select root for SExpr traversal:
+    1. Prefer variables that appear as subjects.
+    2. If none, pick constants that are subjects.
+    3. Fallback: pick node with minimal eccentricity (most central),
+       tie-break on degree and lexicographic order.
+    """
+    # Build subject sets
+    subjects = set()
+    for node, edges in graph.items():
+        for pred, other, direction in edges:
+            if direction == "subject":
+                subjects.add(node)
+
+    # Candidate sets
+    var_subjects = [n for n in graph.keys() if is_variable(n) and n in subjects]
+    const_subjects = [n for n in graph.keys() if not is_variable(n) and n in subjects]
+
+    if var_subjects:
+        # Tie-break: highest degree, then lexicographic
+        return max(var_subjects, key=lambda n: (len(graph[n]), n))
+    if const_subjects:
+        return max(const_subjects, key=lambda n: (len(graph[n]), n))
+
+    # Fallback: compute eccentricity
+    def eccentricity(node):
+        visited = set()
+        queue = deque([(node, 0)])
+        max_dist = 0
+        while queue:
+            current, dist = queue.popleft()
+            if current in visited:
+                continue
+            visited.add(current)
+            max_dist = max(max_dist, dist)
+            for _, neighbor, _ in graph.get(current, []):
+                if neighbor not in visited:
+                    queue.append((neighbor, dist + 1))
+        return max_dist
+
+    eccs = [(eccentricity(n), len(graph[n]), n) for n in graph.keys()]
+    # Minimize eccentricity, then maximize degree, then lexicographic
+    eccs.sort(key=lambda x: (x[0], -x[1], x[2]))
+    return eccs[0][2]
 
 
 def build_sexpr(graph, target):
@@ -183,45 +303,47 @@ def build_sexpr(graph, target):
 
     return {target: unique_paths}
 
-def paths_to_sexpr(logical_paths):
+def paths_to_sexpr(logical_paths, return_vars=None, root=None):
     """
-    Convert logical paths to SExpr with:
-    - Common prefix factoring
-    - Right-associative AND (atomic/simple paths on right)
-    - Path ordering heuristics: constants first, more R relations right
-      applied at every combination step
+    Convert logical paths to SExpr, marking return variables that appear as subjects.
     """
 
     all_paths = list(logical_paths.values())[0]
 
     def is_variable_name(x):
-        return x.startswith('?')
+        return isinstance(x, str) and x.startswith('?')
 
-    # Heuristic for path ordering
     def path_priority(path):
         const_count = sum(1 for s, p, o, d in path if not is_variable_name(s) or not is_variable_name(o))
         r_count = sum(1 for s, p, o, d in path if d == "object")
-        return (-const_count, r_count, len(path))  # more constants left, more R relations right
+        return (-const_count, r_count, len(path))
 
     def path_to_join(path, suffix=None):
-        """Convert a single path (list of edges) to nested JOIN."""
+        """Builds the SExpr for a single path, adding SUBJECT for vars that are subjects."""
         expr = suffix
-        for s, p, o, direction in reversed(path):
+
+        # traverse from leaf to root
+        for a, p, b, direction in reversed(path):
             pred_str = f"(R {p})" if direction == "object" else p
-            other = o if direction == "subject" else s
-            if is_variable_name(other):
-                candidate = s if other != s else o
-                if not is_variable_name(candidate):
-                    other = candidate
-            if expr is None:
-                expr = other
-            expr = f"(JOIN {pred_str} {expr})"
+
+            node = b if direction == "subject" else a
+            if not expr:
+                expr = node
+
+            # if the subject of this edge is a return var, wrap in SUBJECT
+            if direction == "subject" and return_vars and a in return_vars and a != root:
+                # Wrap the JOIN subtree in SUBJECT
+                expr = f"(SUBJECT {a} (JOIN {pred_str} {expr}))"
+            else:
+                # regular JOIN
+                expr = f"(JOIN {pred_str} {expr})"
+
         return expr
 
     def combine_paths(paths):
         if not paths:
             return ""
-        # Sort paths at every recursive step according to importance heuristic
+
         paths = sorted(paths, key=path_priority)
 
         if len(paths) == 1:
@@ -230,9 +352,10 @@ def paths_to_sexpr(logical_paths):
         # Factor common prefix
         min_len = min(len(p) for p in paths)
         prefix_len = 0
+
         for i in range(min_len):
-            first_edge = paths[0][i]
-            if all(len(p) > i and p[i] == first_edge for p in paths):
+            edge = paths[0][i]
+            if all(len(p) > i and p[i] == edge for p in paths):
                 prefix_len += 1
             else:
                 break
@@ -240,20 +363,89 @@ def paths_to_sexpr(logical_paths):
         if prefix_len > 0:
             prefix = paths[0][:prefix_len]
             suffixes = [p[prefix_len:] for p in paths if p[prefix_len:]]
-            if not suffixes:
-                return path_to_join(prefix)
-            combined_suffix = combine_paths(suffixes)
+            combined_suffix = combine_paths(suffixes) if suffixes else None
             return path_to_join(prefix, suffix=combined_suffix)
         else:
-            # No common prefix: right-associative AND
             first, *rest = paths
             inner = combine_paths(rest)
             return f"(AND {path_to_join(first)} {inner})"
 
-    # Initial top-level combination
     return combine_paths(all_paths)
 
-import re
+
+def merge_sexprs_with_subject(sexpr_list, roots, return_vars):
+    """
+    Merge multiple SExprs into one, adding SUBJECT wrappers for roots that are return variables.
+    
+    sexpr_list: list of SExpr strings, one per subgraph
+    roots: list of roots corresponding to each SExpr
+    return_vars: list of return variables for the query
+    """
+    if not sexpr_list:
+        return ""
+
+    wrapped_exprs = []
+
+    for expr, root in zip(sexpr_list, roots):
+        expr = expr.strip()
+        # wrap with SUBJECT if root is a return variable
+        if root in return_vars:
+            expr = f"(SUBJECT {root} {expr})"
+        
+        wrapped_exprs.append(expr)
+
+    # If only one subgraph, return it directly
+    if len(wrapped_exprs) == 1:
+        return wrapped_exprs[0]
+
+    # Merge under top-level AND
+    return f"(AND {' '.join(wrapped_exprs)})"
+
+def wrap_in_select(sexpr_str, return_vars):
+    """
+    Wrap a final SExpr string in a SELECT clause with all return variables.
+   
+    Example:
+      sexpr_str = "(AND ...)"
+      return_vars = ["?person", "?startDate"]
+    Result:
+      "(SELECT ?person ?startDate (AND ...))"
+    """
+    if not return_vars:
+        return sexpr_str  # fallback, no wrapping if empty
+
+    vars_str = ' '.join(return_vars)
+    return f"(SELECT {vars_str} {sexpr_str})"
+
+
+def pretty_print_sexpr(expr: str, indent: int = 2) -> str:
+    """Pretty-print an SExpr string with AND/JOIN nesting."""
+    tokens = expr.replace('(', ' ( ').replace(')', ' ) ').split()
+    result = []
+    level = 0
+    i = 0
+
+    while i < len(tokens):
+        token = tokens[i]
+        if token == '(':
+            # Check next token for AND/JOIN
+            if i + 1 < len(tokens) and tokens[i + 1] in ('AND', 'JOIN', 'RETURN'):
+                result.append(' ' * (level * indent) + '(' + tokens[i + 1])
+                i += 2
+                level += 1
+            else:
+                result.append(' ' * (level * indent) + '(')
+                i += 1
+        elif token == ')':
+            level -= 1
+            result.append(' ' * (level * indent) + ')')
+            i += 1
+        else:
+            result.append(' ' * (level * indent) + token)
+            i += 1
+
+    return '\n'.join(result)
+
 
 # just for comparison to their sexpr for now
 def strip_prefixes(sexpr: str) -> str:
@@ -272,6 +464,7 @@ def strip_prefixes(sexpr: str) -> str:
 # Load dataset
 #json_file_path = "data/CWQ/sexpr/CWQ.train.expr.json"
 json_file_path = "data/wdql_test1k.json"
+#json_file_path = "ApacheJena/test.json"
 
 with open(json_file_path, "r", encoding="utf-8") as f:
     dataset = json.load(f)
@@ -335,32 +528,54 @@ for entry in dataset:
 
     except Exception as e:
         print(f"Jena execution failed: {e}, skipping.\n")
+        input("\n\n")
         continue
 
-    print("Graph:")
-    print("[")
     triples = extract_all_triples(ast)
     graph = build_graph(triples)
-    for node, edges in graph.items():
-        print(f"\n\t{node}")
-        for pred, other, direction in edges:
-            print(f"\t\t{direction} --[{pred}]--> {other}")
-    print("]")
-    print()
+
+    print("Building S-Expression:")
 
     print("Target extraction:")
-    target = extract_select_var(ast)
-    print(target)
+    targets = extract_select_vars(ast)
+    print(targets)
     print()
 
-    print("SExpr construction:")
-    sexpr_schema = build_sexpr(graph, target)
-    print(sexpr_schema)
+    sexprs = []
+    roots = []
+
+    subgraphs = split_into_subgraphs(graph)
+    for graph in subgraphs:
+        print("Subgraph:")
+        print(json.dumps(graph, indent=2))
+        
+        print("Root Selection:")
+        if len(targets) > 1 or targets == []:
+            roots.append(select_root_by_object_rule(graph))
+        else:
+            # force target to be root if only 1 target
+            roots.append(targets[0])
+        print(roots[len(roots) - 1])
+        print()
+
+        print("SExpr construction:")
+        sexpr_schema = build_sexpr(graph, roots[len(roots) - 1])
+        print(json.dumps(sexpr_schema, indent=2))
+        print()
+
+        sexpr = strip_prefixes(paths_to_sexpr(sexpr_schema, targets, roots[len(roots) - 1]))
+        sexprs.append(sexpr)
+
+
+    print("Sexprs list")
+    print(sexprs)
+
+    print("Final S-Expression:")
+    sexpr = merge_sexprs_with_subject(sexprs, roots, targets)
+    sexpr = wrap_in_select(sexpr, targets)
     print()
-    sexpr = strip_prefixes(paths_to_sexpr(sexpr_schema))
-    print("Final SExpr:")
     print(sexpr)
-    print()
+    print("\n")
 
     print("Saved SExpr:")
     print(saved_sexpr)
