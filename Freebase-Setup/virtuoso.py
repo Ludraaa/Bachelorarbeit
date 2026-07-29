@@ -31,9 +31,14 @@ def start(dbPath, port):
   # Use a fraction of the free RAM. The result may vary across runs.
   # memFree = parseInt(`cat /proc/meminfo | grep MemFree | awk '{print $2}'`) # KB
   # Use a fraction of the total RAM. The result is the same across runs.
-  memFree = int(run("cat /proc/meminfo | grep MemTotal | awk '{print $2}'")) # KB
-  numberOfBuffers = memFree * 0.15 / 8
-  maxDirtyBuffers = numberOfBuffers / 2
+  #memFree = int(run("cat /proc/meminfo | grep MemTotal | awk '{print $2}'")) # KB
+  #numberOfBuffers = int(memFree * 0.15 / 8)
+  #maxDirtyBuffers = int(numberOfBuffers / 2)
+  #---------------------
+  memFree = 80 * 1024 * 1024  # 80GB in KB, hardcoded to your job allocation
+  numberOfBuffers = int(memFree * 0.60 / 8)   # 60% of your 80GB = ~6M buffers = ~48GB
+  maxDirtyBuffers = int(numberOfBuffers / 2)
+  #---------------------
   print(f"{memFree} KB free, using {numberOfBuffers} buffers, {maxDirtyBuffers} dirty buffers")
 
   # Configuration options:
@@ -65,7 +70,7 @@ def start(dbPath, port):
     f"DisableTcpSocket = 0\n"
     f"ServerThreads = 100 ; increased from 20\n"
     f"CheckpointInterval = 60\n"
-    f"O_DIRECT = 1 ; increased from 0\n"
+    f"O_DIRECT = 0 ; increased from 0\n"
     f"CaseMode = 2\n"
     f"MaxStaticCursorRows = 100000\n"
     f"CheckpointAuditTrail = 0\n"
@@ -83,7 +88,6 @@ def start(dbPath, port):
     f"MaxMemPoolSize = 200000000\n"
     f"PrefixResultNames = 0\n"
     f"MacSpotlight = 0\n"
-    f"IndexTreeMaps = 64\n"
     f"NumberOfBuffers = {numberOfBuffers}\n"
     f"MaxDirtyBuffers = {maxDirtyBuffers}\n"
     f"\n"

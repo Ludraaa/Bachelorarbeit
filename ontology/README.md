@@ -1,1 +1,0 @@
-Files under this folder originate from [GrailQA](https://github.com/dki-lab/GrailQA)

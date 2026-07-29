@@ -34,5 +34,65 @@
       "response": "output",
       "history": "history"
     }
+  },
+  "WDQL_test.simple": {
+    "file_name": "WDQL_test.simple/examples.json",
+    "formatting": "alpaca",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output",
+      "history": "history"
+    }
+  },
+  "WDQL_test.jena": {
+    "file_name": "WDQL_test.jena/examples.json",
+    "formatting": "alpaca",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output",
+      "history": "history"
+    }
+  },
+  "WDQL_test.sparql": {
+    "file_name": "WDQL_test.sparql/examples.json",
+    "formatting": "alpaca",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output",
+      "history": "history"
+    }
+  },
+  "WebQSP_train.jena": {
+    "file_name": "WebQSP_train.jena/examples.json",
+    "formatting": "alpaca",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output",
+      "history": "history"
+    }
+  },
+  "WebQSP_train.sparql": {
+    "file_name": "WebQSP_train.sparql/examples.json",
+    "formatting": "alpaca",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output",
+      "history": "history"
+    }
+  },
+  "CWQ_train.sparql": {
+    "file_name": "CWQ_train.sparql/examples.json",
+    "formatting": "alpaca",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output",
+      "history": "history"
+    }
   }
 }

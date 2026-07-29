@@ -1,0 +1,1329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChatKBQA Results Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0b0f14;
+    --surface:   #121820;
+    --surface2:  #1a2230;
+    --border:    #1e2d3d;
+    --border2:   #2a3f55;
+    --text:      #d0dde8;
+    --muted:     #5a7a96;
+    --accent:    #38bdf8;
+    --accent2:   #818cf8;
+    --green:     #34d399;
+    --yellow:    #fbbf24;
+    --red:       #f87171;
+    --jena:      #a78bfa;
+    --sparql:    #38bdf8;
+    --gold-tag:  #fbbf24;
+    --fbase-tag: #34d399;
+    --radius:    6px;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Space Grotesk', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 28px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .logo-mark {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 8px;
+    display: grid; place-items: center;
+    flex-shrink: 0;
+    font-family: var(--mono);
+    font-size: 11px; font-weight: 600;
+    color: #000;
+    letter-spacing: -0.5px;
+  }
+  .header-title h1 {
+    font-size: 15px; font-weight: 700;
+    color: #fff; letter-spacing: -0.2px;
+  }
+  .header-title p {
+    font-size: 11px; color: var(--muted); font-family: var(--mono);
+    margin-top: 1px;
+  }
+  .header-actions { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+
+  /* ── Main content ── */
+  #main-content { display: block; }
+
+  /* ── Toolbar ── */
+  .toolbar {
+    padding: 14px 28px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+  }
+  .toolbar-label {
+    font-size: 11px; color: var(--muted); font-family: var(--mono);
+    text-transform: uppercase; letter-spacing: .08em;
+    margin-right: 4px;
+  }
+  .filter-group {
+    display: flex; align-items: center; gap: 6px;
+  }
+  select {
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    padding: 5px 10px;
+    border-radius: var(--radius);
+    font-family: var(--mono);
+    font-size: 12px;
+    cursor: pointer;
+    outline: none;
+    transition: border-color .15s;
+    /*-webkit-appearance: none;*/
+    padding-right: 24px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235a7a96'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+  }
+  select:focus, select:hover { border-color: var(--accent); }
+
+  .toolbar-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  #result-count {
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+  }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 7px 14px; border-radius: var(--radius);
+    font-family: var(--sans); font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: .15s; border: none; outline: none;
+  }
+  .btn-ghost {
+    background: var(--surface2); color: var(--text);
+    border: 1px solid var(--border2);
+  }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-sm { padding: 4px 9px; font-size: 11px; }
+  .btn[disabled] { opacity: .4; cursor: default; }
+
+  /* ── Stats bar ── */
+  .stats-bar {
+    padding: 12px 28px;
+    display: flex; gap: 20px; flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+  }
+  .stat-chip {
+    display: flex; flex-direction: column; gap: 2px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 8px 14px; min-width: 110px;
+  }
+  .stat-chip .sc-label { font-size: 10px; color: var(--muted); font-family: var(--mono); text-transform: uppercase; letter-spacing: .07em; }
+  .stat-chip .sc-val   { font-size: 18px; font-weight: 700; color: #fff; font-family: var(--mono); }
+  .stat-chip .sc-sub   { font-size: 10px; color: var(--muted); font-family: var(--mono); }
+  .stat-chip.best .sc-val { color: var(--green); }
+
+  /* ── Table wrapper ── */
+  .table-wrap {
+    padding: 0 28px 48px;
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin-top: 20px;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  thead th {
+    background: var(--surface);
+    border-bottom: 2px solid var(--border2);
+    border-top: 1px solid var(--border);
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 10px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    transition: color .15s;
+  }
+  thead th:hover { color: var(--accent); }
+  thead th.sorted-asc::after  { content: ' ↑'; color: var(--accent); }
+  thead th.sorted-desc::after { content: ' ↓'; color: var(--accent); }
+  thead th.metric { color: var(--accent2); }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background .1s;
+    cursor: pointer;
+  }
+  tbody tr:hover { background: var(--surface2); }
+
+  tbody td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+
+  /* Mode badges */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px; border-radius: 20px;
+    font-size: 10px; font-weight: 600; letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+  .badge-jena   { background: rgba(167,139,250,.15); color: var(--jena); border: 1px solid rgba(167,139,250,.3); }
+  .badge-sparql { background: rgba(56,189,248,.15);  color: var(--sparql); border: 1px solid rgba(56,189,248,.3); }
+  .badge-gold   { background: rgba(251,191,36,.12);  color: var(--gold-tag); border: 1px solid rgba(251,191,36,.3); }
+  .badge-auto   { background: rgba(52,211,153,.12);  color: var(--fbase-tag); border: 1px solid rgba(52,211,153,.3); }
+  .badge-null   { background: rgba(90,122,150,.1);   color: var(--muted); border: 1px solid rgba(90,122,150,.2); }
+
+  .linker-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+  }
+
+  /* ── ER / RR columns (entity / relation resolution) ── */
+  .col-er, .col-rr { min-width: 190px; }
+
+  .kt-row {
+    display: flex; gap: 8px; align-items: center;
+    font-size: 11px; margin-bottom: 5px;
+  }
+  .kt-row .param-kv { display: inline-flex; align-items: center; gap: 2px; }
+  .kt-row .param-k { color: var(--accent2); font-size: 10px; }
+  .kt-row .param-v { color: var(--text); font-size: 11px; }
+  .kt-row.empty { color: var(--border2); }
+
+  .linker-row {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  }
+
+  .badge-with-info {
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .linker-info-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 15px; height: 15px; border-radius: 50%;
+    background: var(--surface2); border: 1px solid var(--border2);
+    color: var(--accent); font-size: 10px; font-weight: 700;
+    font-family: var(--sans); line-height: 1; cursor: help;
+    flex-shrink: 0;
+  }
+  .linker-info-icon:hover {
+    background: var(--accent); color: #0b0f14; border-color: var(--accent);
+  }
+
+  .group-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--accent2);
+    border: 1px solid var(--accent2);
+    color: #0b0f14;
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 5px 11px;
+    border-radius: 14px;
+    margin-right: 8px;
+    cursor: pointer;
+    box-shadow: 0 0 0 0 rgba(129,140,248,0);
+    transition: transform .1s, box-shadow .15s, background .15s;
+  }
+  .group-toggle:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(56,189,248,.25);
+  }
+  .group-toggle:active { transform: scale(0.96); }
+  .group-toggle .gt-arrow { font-size: 13px; line-height: 1; }
+
+  .sub-row-marker {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 5px;
+    border-radius: 7px;
+    background: rgba(129,140,248,.16);
+    border: 1px solid rgba(129,140,248,.4);
+    color: var(--accent2);
+    font-size: 14px;
+    font-weight: 700;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+
+  tbody tr.sub-row {
+    background: rgba(255,255,255,.015);
+  }
+  tbody tr.sub-row:hover { background: var(--surface2); }
+  tbody tr.sub-row td {
+    color: var(--muted);
+    border-bottom: 1px dashed var(--border);
+  }
+  tbody tr.sub-row td.ts-cell { padding-left: 16px; }
+
+  /* Metric cells */
+  .metric-cell {
+    font-weight: 600;
+    text-align: right;
+    position: relative;
+  }
+  .metric-cell .mbar {
+    display: block; height: 2px; border-radius: 2px;
+    margin-top: 3px; background: var(--border2);
+    overflow: hidden;
+  }
+  .metric-cell .mbar-fill {
+    height: 100%; border-radius: 2px;
+    background: linear-gradient(90deg, var(--accent2), var(--accent));
+  }
+  .metric-cell.best-val .mbar-fill { background: linear-gradient(90deg, var(--green), #6ee7b7); }
+  .metric-cell.best-val { color: var(--green); }
+  .legacy-marker { color: var(--yellow); cursor: help; font-weight: 700; margin-left: 1px; }
+
+  /* Exec bar */
+  .exec-cell { min-width: 90px; }
+  .exec-bar-bg {
+    height: 4px; background: var(--border2); border-radius: 2px; margin-top: 4px; overflow: hidden;
+  }
+  .exec-bar-fill {
+    height: 100%; border-radius: 2px;
+    background: linear-gradient(90deg, var(--yellow), var(--green));
+  }
+
+  /* Timestamp */
+  .ts-cell { color: var(--muted); font-size: 11px; }
+
+  /* Endpoint pill */
+  .ep-pill {
+    display: inline-block;
+    background: var(--surface2); border: 1px solid var(--border2);
+    border-radius: 20px; padding: 2px 8px;
+    font-size: 10px; color: var(--muted);
+    max-width: 160px; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* Model cell */
+  .model-cell { font-weight: 500; color: #fff; }
+
+  /* Notes cell */
+  .note-cell {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .note-cell.has-note { color: var(--text); }
+  .note-label {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    padding: 1px 4px;
+    border-radius: 3px;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+  .note-label-r { background: rgba(56,189,248,.12); color: var(--accent);  border: 1px solid rgba(56,189,248,.2); }
+  .note-label-e { background: rgba(251,191,36,.10); color: var(--yellow); border: 1px solid rgba(251,191,36,.2); }
+
+  /* Params cell */
+  .params-cell {
+    font-size: 11px;
+    color: var(--muted);
+    min-width: 160px;
+  }
+  .params-cell .param-row {
+    display: flex; gap: 6px; align-items: center; flex-wrap: nowrap;
+  }
+  .param-kv {
+    display: inline-flex; align-items: center; gap: 2px;
+  }
+  .param-k { color: var(--accent2); font-size: 10px; }
+  .param-v { color: var(--text);    font-size: 11px; }
+  .param-sep { color: var(--border2); margin: 0 3px; }
+  .params-null { color: var(--border2); }
+
+  /* Pass counts */
+  .pass-pill {
+    display: inline-block;
+    background: rgba(52,211,153,.08); border: 1px solid rgba(52,211,153,.2);
+    border-radius: 4px; padding: 1px 6px;
+    font-size: 10px; color: var(--green); margin-top: 3px;
+  }
+
+  /* Empty state */
+  #empty-state {
+    text-align: center; padding: 60px 28px; color: var(--muted);
+    font-family: var(--mono); display: none;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+  /* Column sizing */
+  .col-meta      { min-width: 150px; }
+  .col-model     { min-width: 220px; }
+  .col-mode      { min-width: 80px; }
+  .col-linker    { min-width: 100px; }
+  .col-endpoint  { min-width: 150px; }
+  .col-n         { min-width: 55px; text-align: right; }
+  .col-exec      { min-width: 90px; }
+  .col-metric    { min-width: 68px; text-align: right; }
+  .col-notes     { min-width: 180px; }
+  .col-params    { min-width: 210px; }
+
+  /* New results notification */
+  .fresh-badge {
+    display: inline-block; margin-left: 8px;
+    background: var(--green); color: #000;
+    font-size: 9px; font-weight: 700;
+    padding: 1px 5px; border-radius: 3px;
+    vertical-align: middle; font-family: var(--sans);
+  }
+
+  /* Tooltip via title — native, no JS needed */
+  [title] { cursor: default; }
+
+  /* ── Inspector modal ── */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.6);
+    display: none; align-items: center; justify-content: center;
+    z-index: 1000; padding: 24px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal-panel {
+    background: var(--surface); border: 1px solid var(--border2);
+    border-radius: 10px; width: min(900px, 100%); max-height: 85vh;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .modal-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+  }
+  .modal-title { font-weight: 600; font-size: 13px; color: #fff; font-family: var(--mono); }
+  .modal-close {
+    margin-left: auto; background: none; border: none; color: var(--muted);
+    font-size: 16px; cursor: pointer;
+  }
+  .modal-close:hover { color: var(--text); }
+  .modal-tabs { display: flex; gap: 4px; padding: 10px 18px 0; border-bottom: 1px solid var(--border); }
+  .modal-tab {
+    background: none; border: none; color: var(--muted);
+    font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+    padding: 8px 12px; cursor: pointer; border-bottom: 2px solid transparent;
+  }
+  .modal-tab:hover { color: var(--text); }
+  .modal-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .modal-body { padding: 16px 18px; overflow-y: auto; flex: 1; }
+  .modal-status { color: var(--muted); font-family: var(--mono); font-size: 12px; line-height: 1.7; }
+  .modal-status.error { color: var(--red); }
+  .modal-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .modal-toolbar input {
+    flex: 1; background: var(--surface2); border: 1px solid var(--border2);
+    color: var(--text); padding: 6px 10px; border-radius: var(--radius);
+    font-family: var(--mono); font-size: 12px; outline: none;
+  }
+  .modal-toolbar input:focus { border-color: var(--accent); }
+  .modal-count { color: var(--muted); font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+
+  /* Top-level expandable blocks: "Meta" and "Items" */
+  .json-block {
+    border: 1px solid var(--border2); border-radius: var(--radius);
+    background: var(--surface2); margin-bottom: 14px;
+  }
+  .json-block > summary {
+    padding: 10px 14px; cursor: pointer; font-family: var(--mono); font-size: 11px;
+    font-weight: 600; color: var(--accent2); list-style: none;
+    text-transform: uppercase; letter-spacing: .06em;
+  }
+  .json-block > summary::-webkit-details-marker { display: none; }
+  .json-block > pre {
+    margin: 0; padding: 12px 14px; border-top: 1px solid var(--border);
+    font-size: 11px; white-space: pre-wrap; word-break: break-word; color: var(--text);
+    max-height: 320px; overflow-y: auto;
+  }
+  .items-block-body { padding: 0 14px 14px; border-top: 1px solid var(--border); }
+
+  /* Per-item expandable blocks inside the Items list */
+  .json-list { display: flex; flex-direction: column; gap: 6px; }
+  .json-item {
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--surface);
+  }
+  .json-item summary {
+    padding: 7px 10px; cursor: pointer; font-family: var(--mono); font-size: 11px;
+    color: var(--text); list-style: none;
+  }
+  .json-item summary::-webkit-details-marker { display: none; }
+  .json-item pre {
+    margin: 0; padding: 10px; border-top: 1px solid var(--border);
+    font-size: 11px; white-space: pre-wrap; word-break: break-word;
+    color: var(--text); max-height: 400px; overflow-y: auto;
+  }
+  .modal-pager {
+    display: flex; align-items: center; justify-content: center; gap: 14px;
+    margin-top: 14px; font-family: var(--mono); font-size: 11px; color: var(--muted);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-mark">KG</div>
+  <div class="header-title">
+    <h1>KGQA Results Explorer</h1>
+    <p>ChatKBQA · WebQSP · Llama-2-7b</p>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-ghost" onclick="loadResults()" title="Reload results.json from disk">↺ reload</button>
+  </div>
+</header>
+
+<div id="main-content">
+
+  <div class="toolbar">
+    <span class="toolbar-label">Filter</span>
+
+    <div class="filter-group">
+      <label style="font-size:11px;color:var(--muted);font-family:var(--mono);">model</label>
+      <select id="f-model"><option value="">all</option></select>
+    </div>
+    <div class="filter-group">
+      <label style="font-size:11px;color:var(--muted);font-family:var(--mono);">mode</label>
+      <select id="f-mode"><option value="">all</option></select>
+    </div>
+    <div class="filter-group">
+      <label style="font-size:11px;color:var(--muted);font-family:var(--mono);">entity linker</label>
+      <select id="f-entity"><option value="">all</option></select>
+    </div>
+    <div class="filter-group">
+      <label style="font-size:11px;color:var(--muted);font-family:var(--mono);">pred linker</label>
+      <select id="f-pred"><option value="">all</option></select>
+    </div>
+    <div class="filter-group">
+      <label style="font-size:11px;color:var(--muted);font-family:var(--mono);">endpoint</label>
+      <select id="f-endpoint"><option value="">all</option></select>
+    </div>
+
+    <div class="toolbar-right">
+      <span id="result-count"></span>
+      <button class="btn btn-ghost" style="font-size:12px" onclick="clearFilters()">✕ clear</button>
+    </div>
+  </div>
+
+  <div class="stats-bar" id="stats-bar"></div>
+
+  <div class="table-wrap">
+    <div id="empty-state">No rows match the current filters.</div>
+    <table id="results-table">
+      <thead>
+        <tr>
+          <th class="col-meta"    data-col="timestamp">Timestamp</th>
+          <th class="col-model"   data-col="model_id">Model</th>
+          <th class="col-mode"    data-col="mode">Mode</th>
+          <th class="col-er"      data-col="_er_sort" title="Entity Resolution: k1/t1 thresholds and entity linker chain (hover the ⓘ on a linker for its specific params)">ER</th>
+          <th class="col-rr"      data-col="_rr_sort" title="Relation Resolution: k2/t2 thresholds and predicate linker chain (hover the ⓘ on a linker for its specific params)">RR</th>
+          <th class="col-endpoint"data-col="eval_endpoint">Endpoint</th>
+          <th class="col-n"       data-col="num_items">N</th>
+          <th class="col-exec"    data-col="executable_pct">Exec%</th>
+          <th class="col-metric metric" data-col="exact_match">EM</th>
+          <th class="col-metric metric" data-col="_af1" title="assignment_f1 (Hungarian matching). Falls back to legacy token-overlap F1 for older runs — those are marked with †, and aren't directly comparable to assignment_f1.">Asgn F1</th>
+          <th class="col-metric metric" data-col="hit1">Hit@1</th>
+          <th class="col-notes"   data-col="_notes_sort">Notes</th>
+        </tr>
+      </thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- ── Inspector modal: resolve / eval file viewer ── -->
+<div class="modal-overlay" id="inspector-overlay">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <div class="modal-title" id="inspector-title"></div>
+      <button class="modal-close" onclick="closeInspector()" title="Close">✕</button>
+    </div>
+    <div class="modal-tabs">
+      <button class="modal-tab" data-tab="resolve" onclick="switchTab('resolve')">Resolve</button>
+      <button class="modal-tab" data-tab="eval"    onclick="switchTab('eval')">Eval</button>
+    </div>
+    <div class="modal-body" id="inspector-body"></div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let allData = [];
+let currentFilename = '';
+let sortCol = 'timestamp';
+let sortDir = 'desc';
+let expandedGroups = new Set();
+
+// Only these three drive sorting / "best" highlighting / the stats bar.
+// _af1 is assignment_f1, falling back to legacy f1 where assignment_f1 wasn't recorded.
+const METRICS = ['exact_match', '_af1', 'hit1'];
+
+// ── File loading ────────────────────────────────────────────────────────────
+const RESULTS_PATH = "../results/results.json";
+
+async function loadResults() {
+  try {
+    const response = await fetch(RESULTS_PATH);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    loadData(Array.isArray(data) ? data : [data], "results.json");
+  } catch(err) {
+    document.body.innerHTML = `
+      <div style="padding:40px;color:white;background:#0b0f14;font-family:sans-serif">
+        Failed to load ${RESULTS_PATH}<br><br>${err.message}
+      </div>`;
+  }
+}
+
+// ── Data ingestion ──────────────────────────────────────────────────────────
+function loadData(data, filename) {
+  allData = data.map((d, i) => {
+    // Normalise notes: old format has 'note', new has 'resolve_note' + 'eval_note'
+    const resolveNote = d.resolve_note ?? d.note ?? '';
+    const evalNote    = d.eval_note ?? '';
+
+    // Normalise predicate linker key (old: predicate_linker, new: predicate_linkers)
+    const predLinker = d.predicate_linker ?? d.predicate_linkers ?? null;
+
+    // Normalise entity linker key (old: entity_linker scalar, new: entity_linkers array)
+    const entityLinker = d.entity_linker ?? d.entity_linkers ?? null;
+
+    // Per-linker freeform param dicts (new format only)
+    const entityLinkerParams = d.entity_linker_params ?? null;
+    const predLinkerParams   = d.predicate_linker_params ?? null;
+
+    // Normalise params: old format has scalar k1/t1/k2/t2; new has *_per_pass arrays
+    // Prefer per_pass arrays if present, fall back to scalar
+    const k1 = d.k1_per_pass ?? (d.k1 !== undefined ? [d.k1] : null);
+    const t1 = d.t1_per_pass ?? (d.t1 !== undefined ? [d.t1] : null);
+    const k2 = d.k2_per_pass ?? (d.k2 !== undefined ? [d.k2] : null);
+    const t2 = d.t2_per_pass ?? (d.t2 !== undefined ? [d.t2] : null);
+
+    // assignment_f1 replaced token-overlap f1 as the metric. Older runs only have f1 —
+    // fall back to it, but flag the source so the table can mark it as not directly
+    // comparable to true assignment_f1.
+    const af1 = d.assignment_f1 ?? d.f1 ?? null;
+    const af1Source = d.assignment_f1 != null ? 'assignment' : (d.f1 != null ? 'legacy' : null);
+
+    // Compute synthetic sort keys
+    const hasNote = (resolveNote + evalNote).trim().length > 0;
+
+    return {
+      ...d,
+      _id: i,
+      _resolveNote: resolveNote,
+      _evalNote:    evalNote,
+      _predLinker:  predLinker,
+      _entityLinker: entityLinker,
+      _entityLinkerParams: entityLinkerParams,
+      _predLinkerParams:   predLinkerParams,
+      _k1: k1, _t1: t1, _k2: k2, _t2: t2,
+      _af1: af1, _af1Source: af1Source,
+      _beamLimits:  d.beam_limits ?? null,
+      _passCounts:  d.pass_counts ?? null,
+      _notes_sort:  hasNote ? (resolveNote + evalNote) : '',
+      _er_sort: (k1 ? String(k1[0]) : '') + '|' + normLinker(entityLinker),
+      _rr_sort: (k2 ? String(k2[0]) : '') + '|' + normLinker(predLinker),
+    };
+  });
+
+  currentFilename = filename;
+  populateFilters();
+  renderTable();
+}
+
+// ── Filters ─────────────────────────────────────────────────────────────────
+function normLinker(v) {
+  if (v === null || v === undefined) return '—';
+  if (Array.isArray(v)) return v.join(', ') || '—';
+  return String(v);
+}
+
+function shortEndpoint(url) {
+  try {
+    const u = new URL(url);
+    return u.host + u.pathname.replace('/sparql','');
+  } catch { return url; }
+}
+
+function populateFilters() {
+  fillSelect('f-model',  '_id', d => d.model_id);
+  fillSelect('f-mode',   '_id', d => d.mode);
+  fillSelect('f-entity', '_id', d => normLinker(d._entityLinker));
+  fillSelect('f-pred',   '_id', d => normLinker(d._predLinker));
+
+  const epSel = document.getElementById('f-endpoint');
+  epSel.innerHTML = '<option value="">all</option>';
+  [...new Set(allData.map(d => d.eval_endpoint))].sort().forEach(ep => {
+    const o = document.createElement('option');
+    o.value = ep; o.textContent = shortEndpoint(ep);
+    epSel.appendChild(o);
+  });
+
+  ['f-model','f-mode','f-entity','f-pred','f-endpoint'].forEach(id =>
+    document.getElementById(id).addEventListener('change', renderTable));
+}
+
+function fillSelect(id, _unused, getter) {
+  const sel = document.getElementById(id);
+  const vals = [...new Set(allData.map(getter))].sort();
+  sel.innerHTML = '<option value="">all</option>';
+  vals.forEach(v => {
+    const o = document.createElement('option');
+    o.value = v; o.textContent = v;
+    sel.appendChild(o);
+  });
+}
+
+function clearFilters() {
+  ['f-model','f-mode','f-entity','f-pred','f-endpoint']
+    .forEach(id => document.getElementById(id).value = '');
+  renderTable();
+}
+
+function filteredData() {
+  const f = {
+    model:    document.getElementById('f-model').value,
+    mode:     document.getElementById('f-mode').value,
+    entity:   document.getElementById('f-entity').value,
+    pred:     document.getElementById('f-pred').value,
+    endpoint: document.getElementById('f-endpoint').value,
+  };
+  return allData.filter(d => {
+    if (f.model    && d.model_id               !== f.model)    return false;
+    if (f.mode     && d.mode                   !== f.mode)     return false;
+    if (f.entity   && normLinker(d._entityLinker) !== f.entity) return false;
+    if (f.pred     && normLinker(d._predLinker) !== f.pred)    return false;
+    if (f.endpoint && d.eval_endpoint          !== f.endpoint) return false;
+    return true;
+  });
+}
+
+// ── Sorting ─────────────────────────────────────────────────────────────────
+document.querySelectorAll('thead th[data-col]').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    if (sortCol === col) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    else { sortCol = col; sortDir = METRICS.includes(col) ? 'desc' : 'asc'; }
+    renderTable();
+  });
+});
+
+function sortedData(rows) {
+  return [...rows].sort((a, b) => {
+    let av = a[sortCol], bv = b[sortCol];
+    if (av === null || av === undefined) av = '';
+    if (bv === null || bv === undefined) bv = '';
+    if (typeof av === 'number') return sortDir === 'asc' ? av - bv : bv - av;
+    return sortDir === 'asc'
+      ? String(av).localeCompare(String(bv))
+      : String(bv).localeCompare(String(av));
+  });
+}
+
+// ── Helpers: ER / RR cells ────────────────────────────────────────────────────
+// ER = Entity Resolution (k1/t1 + entity linker chain)
+// RR = Relation Resolution (k2/t2 + predicate linker chain)
+// Each linker's params are an arbitrary flat dict, e.g.
+// { "ChatKBQA.facc1": { top_k: 50, facc_threshold: 0.001 } } — rendered as a
+// compact ", "-joined "key: value" string behind a hover icon on the badge.
+function formatLinkerParams(params) {
+  if (!params || typeof params !== 'object') return '';
+  const entries = Object.entries(params);
+  if (!entries.length) return '';
+  return entries.map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(', ');
+}
+
+function ktRow(kLabel, kArr, tLabel, tArr) {
+  function kv(label, arr) {
+    if (!arr) return '';
+    const vals = arr.filter(v => v !== null && v !== undefined);
+    if (!vals.length) return '';
+    const display = vals.length === 1 ? vals[0] : '[' + vals.join(', ') + ']';
+    return `<span class="param-kv"><span class="param-k">${label}</span><span class="param-v">=${display}</span></span>`;
+  }
+  const parts = [kv(kLabel, kArr), kv(tLabel, tArr)].filter(Boolean);
+  if (!parts.length) return `<div class="kt-row empty">—</div>`;
+  return `<div class="kt-row">${parts.join('<span class="param-sep">·</span>')}</div>`;
+}
+
+// linkerNames: string or array of linker names; paramsMap: freeform dict keyed
+// by linker name -> {param: value, ...} (may be null/undefined)
+function linkerChainRow(linkerNames, paramsMap) {
+  const items = linkerNames === null || linkerNames === undefined
+    ? [] : (Array.isArray(linkerNames) ? linkerNames : [linkerNames]);
+  if (!items.length) return `<div class="linker-row"><span class="badge badge-null">—</span></div>`;
+  const spans = items.map(item => {
+    const cls = item === 'gold' ? 'badge badge-gold' : 'badge badge-auto';
+    const paramStr = formatLinkerParams(paramsMap ? paramsMap[item] : null);
+    const icon = paramStr
+      ? `<span class="linker-info-icon" title="${esc(item + ' — ' + paramStr)}">ⓘ</span>`
+      : '';
+    return `<span class="badge-with-info"><span class="${cls}">${esc(item)}</span>${icon}</span>`;
+  }).join('');
+  return `<div class="linker-row">${spans}</div>`;
+}
+
+function formatERCell(d) {
+  const passHtml = d._passCounts
+    ? `<div><span class="pass-pill" title="pass counts: ${esc(Object.entries(d._passCounts).map(([k,v]) => `${k}: ${v}`).join(' | '))}">passes: ${Object.values(d._passCounts).join('/')}</span></div>`
+    : '';
+  return `<td class="er-cell">
+    ${ktRow('k1', d._k1, 't1', d._t1)}
+    ${linkerChainRow(d._entityLinker, d._entityLinkerParams)}
+  </td>`;
+}
+
+function formatRRCell(d) {
+  const passHtml = d._passCounts
+    ? `<div><span class="pass-pill" title="pass counts: ${esc(Object.entries(d._passCounts).map(([k,v]) => `${k}: ${v}`).join(' | '))}">passes: ${Object.values(d._passCounts).join('/')}</span></div>`
+    : '';
+  return `<td class="rr-cell">
+    ${ktRow('k2', d._k2, 't2', d._t2)}
+    ${linkerChainRow(d._predLinker, d._predLinkerParams)}
+    ${passHtml}
+  </td>`;
+}
+
+// ── Helpers: notes cell ──────────────────────────────────────────────────────
+function formatNotesCell(d) {
+  const rn = d._resolveNote;
+  const en = d._evalNote;
+  const hasAny = rn || en;
+
+  if (!hasAny) {
+    return `<td class="note-cell"><span style="color:var(--border2)">—</span></td>`;
+  }
+
+  let inner = '';
+  if (rn) {
+    inner += `<div title="${esc(rn)}"><span class="note-label note-label-r">R</span>${esc(truncate(rn, 28))}</div>`;
+  }
+  if (en) {
+    inner += `<div title="${esc(en)}"><span class="note-label note-label-e">E</span>${esc(truncate(en, 28))}</div>`;
+  }
+
+  return `<td class="note-cell has-note">${inner}</td>`;
+}
+
+function truncate(s, n) {
+  return s.length > n ? s.slice(0, n) + '…' : s;
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ── Helpers: metric cells ─────────────────────────────────────────────────────
+function metricCell(val, key, best) {
+  if (val == null) return `<td class="metric-cell" style="text-align:right;color:var(--muted)">—</td>`;
+  const isBest = best[key] != null && val === best[key];
+  const pct = (val * 100).toFixed(1);
+  return `<td class="metric-cell${isBest ? ' best-val' : ''}" style="text-align:right">
+    ${pct}
+    <span class="mbar"><span class="mbar-fill" style="width:${pct}%"></span></span>
+  </td>`;
+}
+
+// Like metricCell, but marks rows where _af1 is a legacy token-overlap-F1 fallback
+// rather than true assignment_f1, since the two aren't directly comparable.
+function af1Cell(d, best) {
+  const val = d._af1;
+  if (val == null) return `<td class="metric-cell" style="text-align:right;color:var(--muted)">—</td>`;
+  const isBest = best._af1 != null && val === best._af1;
+  const pct = (val * 100).toFixed(1);
+  const marker = d._af1Source === 'legacy'
+    ? `<span class="legacy-marker" title="No assignment_f1 recorded for this run — showing legacy token-overlap F1 instead. Not directly comparable to assignment_f1 from newer runs.">†</span>`
+    : '';
+  return `<td class="metric-cell${isBest ? ' best-val' : ''}" style="text-align:right">
+    ${pct}${marker}
+    <span class="mbar"><span class="mbar-fill" style="width:${pct}%"></span></span>
+  </td>`;
+}
+
+// ── Grouping ─────────────────────────────────────────────────────────────────
+// Runs that share everything except thresholds (k1/t1/k2/t2/beam_limits) and
+// notes are collapsed into one row. The row shown is the best member by
+// assignment_f1 (falling back to legacy f1, then most recent); the rest sit
+// behind the expand toggle.
+function groupIdentity(d) {
+  return JSON.stringify({
+    model:    d.model_id ?? null,
+    mode:     d.mode ?? null,
+    dataset:  d.dataset ?? null,
+    split:    d.split ?? null,
+    kb:       d.kb ?? null,
+    entity:   normLinker(d._entityLinker),
+    pred:     normLinker(d._predLinker),
+    endpoint: d.eval_endpoint ?? null,
+  });
+}
+
+function buildGroups(rows) {
+  const map = new Map();
+  rows.forEach(d => {
+    const key = groupIdentity(d);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(d);
+  });
+  return [...map.entries()].map(([key, members]) => {
+    const ranked = [...members].sort((a, b) => {
+      const av = a._af1 ?? -Infinity, bv = b._af1 ?? -Infinity;
+      if (bv !== av) return bv - av;
+      return new Date(b.timestamp) - new Date(a.timestamp);
+    });
+    return { key, best: ranked[0], others: ranked.slice(1) };
+  });
+}
+
+// ── Rendering ────────────────────────────────────────────────────────────────
+function renderTable() {
+  const rows = filteredData();
+  const groups = buildGroups(rows);
+  const repRows = groups.map(g => g.best);
+  const groupByRepId = new Map(groups.map(g => [g.best._id, g]));
+  const sorted = sortedData(repRows);
+
+  document.querySelector('.header-title p').textContent =
+    currentFilename + ' · ' + allData.length + ' entries';
+
+  document.querySelectorAll('thead th').forEach(th => {
+    th.classList.remove('sorted-asc','sorted-desc');
+    if (th.dataset.col === sortCol) th.classList.add('sorted-' + sortDir);
+  });
+
+  const best = {};
+  METRICS.forEach(m => {
+    const vals = rows.map(d => d[m]).filter(v => v != null);
+    best[m] = vals.length ? Math.max(...vals) : null;
+  });
+
+  renderStats(rows, best, groups.length);
+
+  document.getElementById('result-count').textContent =
+    groups.length + ' / ' + allData.length + ' entries'
+    + (rows.length !== groups.length ? ` (${rows.length} runs)` : '');
+
+  const tbody  = document.getElementById('table-body');
+  const empty  = document.getElementById('empty-state');
+
+  if (sorted.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  const maxTs = Math.max(...allData.map(d => new Date(d.timestamp).getTime()));
+
+  tbody.innerHTML = sorted.map(d => {
+    const group = groupByRepId.get(d._id);
+    let html = renderRow(d, best, maxTs, group, false);
+    if (group && group.others.length > 0 && expandedGroups.has(group.key)) {
+      html += group.others.map(o => renderRow(o, best, maxTs, null, true)).join('');
+    }
+    return html;
+  }).join('');
+}
+
+// Deterministic color per mode string, so any number of modes get a
+// distinct, stable badge color without hardcoding values.
+function hashString(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+function modeBadgeHtml(mode) {
+  if (mode === null || mode === undefined || mode === '') {
+    return `<span class="badge badge-null">—</span>`;
+  }
+  const hue = hashString(String(mode)) % 360;
+  const bg     = `hsla(${hue}, 70%, 60%, .15)`;
+  const fg     = `hsl(${hue}, 70%, 68%)`;
+  const border = `hsla(${hue}, 70%, 60%, .35)`;
+  return `<span class="badge" style="background:${bg};color:${fg};border:1px solid ${border}">${esc(mode)}</span>`;
+}
+
+function renderRow(d, best, maxTs, group, isSubRow) {
+  const ts = new Date(d.timestamp);
+  const isFresh = (maxTs - ts.getTime()) < 3600_000 * 6;
+  const tsStr = ts.toLocaleString('sv-SE', { timeZone: 'UTC' })
+                 .replace('T',' ').slice(0, 16);
+
+  const modeBadge = modeBadgeHtml(d.mode);
+
+  const groupSize = group ? group.others.length + 1 : 0;
+  const isExpanded = group && expandedGroups.has(group.key);
+  const groupToggle = (group && group.others.length > 0)
+    ? `<span class="group-toggle" data-group-key="${esc(group.key)}"
+         title="${group.others.length} other run${group.others.length > 1 ? 's' : ''} with the same setup — different thresholds or notes. Showing the best by assignment F1."><span class="gt-arrow">${isExpanded ? '▾' : '▸'}</span> ${groupSize} runs</span>`
+    : '';
+  const subMarker = isSubRow ? `<span class="sub-row-marker">↳</span>` : '';
+
+  return `<tr data-id="${d._id}" class="${isSubRow ? 'sub-row' : ''}">
+    <td class="ts-cell">${subMarker}${groupToggle}${tsStr}${isFresh ? '<span class="fresh-badge">NEW</span>' : ''}</td>
+    <td class="model-cell" title="${esc(d.model_id || '')}">${esc(d.model_id || '—')}</td>
+    <td>${modeBadge}</td>
+    ${formatERCell(d)}
+    ${formatRRCell(d)}
+    <td><span class="ep-pill" title="${esc(d.eval_endpoint)}">${esc(shortEndpoint(d.eval_endpoint))}</span></td>
+    <td style="text-align:right;color:var(--muted)">${d.num_items ?? '—'}</td>
+    <td class="exec-cell">
+      ${d.executable_pct != null ? d.executable_pct.toFixed(1) + '%' : '—'}
+      ${d.executable_pct != null
+        ? `<div class="exec-bar-bg"><div class="exec-bar-fill" style="width:${d.executable_pct}%"></div></div>`
+        : ''}
+    </td>
+    ${metricCell(d.exact_match, 'exact_match', best)}
+    ${af1Cell(d, best)}
+    ${metricCell(d.hit1, 'hit1', best)}
+    ${formatNotesCell(d)}
+  </tr>`;
+}
+
+// ── Stats bar ────────────────────────────────────────────────────────────────
+function renderStats(rows, best, groupCount) {
+  const bar = document.getElementById('stats-bar');
+  if (rows.length === 0) { bar.innerHTML = ''; return; }
+
+  function avgMetric(key) {
+    const vals = rows.map(d => d[key]).filter(v => v != null);
+    return vals.length ? (vals.reduce((a,b) => a+b, 0)/vals.length) : null;
+  }
+
+  function chip(label, val, sub, isBest) {
+    const display = val != null ? (typeof val === 'number' ? val.toFixed(3) : val) : '—';
+    return `<div class="stat-chip${isBest ? ' best' : ''}">
+      <span class="sc-label">${label}</span>
+      <span class="sc-val">${display}</span>
+      <span class="sc-sub">${sub}</span>
+    </div>`;
+  }
+
+  bar.innerHTML = [
+    chip('Runs',       groupCount,          rows.length + ' runs', false),
+    chip('Best AsgnF1',best['_af1'],        'in selection', true),
+    chip('Avg AsgnF1', avgMetric('_af1'),   'in selection', false),
+    chip('Best Hit@1', best['hit1'],        'in selection', false),
+    chip('Best EM',    best['exact_match'], 'in selection', false),
+  ].join('');
+}
+
+// ── Row click → toggle group, or open inspector ─────────────────────────────
+document.getElementById('table-body').addEventListener('click', (e) => {
+  const toggle = e.target.closest('.group-toggle');
+  if (toggle) {
+    e.stopPropagation();
+    const key = toggle.dataset.groupKey;
+    if (expandedGroups.has(key)) expandedGroups.delete(key);
+    else expandedGroups.add(key);
+    renderTable();
+    return;
+  }
+  const tr = e.target.closest('tr[data-id]');
+  if (tr) openInspector(tr.dataset.id);
+});
+
+document.getElementById('inspector-overlay').addEventListener('click', (e) => {
+  if (e.target.id === 'inspector-overlay') closeInspector();
+});
+
+// ── Inspector modal: resolve / eval viewer ──────────────────────────────────
+// resolved_file / evaluated_file are JSON objects shaped like {meta, items}. We
+// render "Meta" and "Items" as separate top-level expandable blocks, and each
+// entry inside items as its own expandable block within a searchable, paginated
+// list (so opening a 1800-item run doesn't render 1800 <pre> blocks at once).
+const PAGE_SIZE = 50;
+const LARGE_FILE_WARN_BYTES = 25 * 1024 * 1024;   // 25 MB — confirm before full JSON.parse
+
+// Project-root marker used to turn an absolute filesystem path from results.json
+// into a URL this page can fetch. Mirrors the existing RESULTS_PATH convention
+// (explorer lives one level below the project root, same as the results/ folder).
+// Adjust these two constants if your explorer's folder layout differs.
+const PROJECT_ROOT_MARKER = '/ChatKBQA/';
+const RELATIVE_PREFIX = '../';
+
+function toServedUrl(absPath) {
+  if (!absPath) return null;
+  const idx = absPath.indexOf(PROJECT_ROOT_MARKER);
+  if (idx === -1) return null;
+  return RELATIVE_PREFIX + absPath.slice(idx + PROJECT_ROOT_MARKER.length);
+}
+
+// Splits a loaded JSON value into {meta, items}. Handles the {meta, items} shape
+// directly; falls back to treating a plain array as items with no meta; and as
+// a last resort wraps an unrecognised object as a single item so something is
+// still shown rather than nothing.
+function splitMetaItems(data) {
+  if (Array.isArray(data)) return { meta: null, items: data };
+  if (data && typeof data === 'object' && Array.isArray(data.items)) {
+    const meta = data.meta !== undefined
+      ? data.meta
+      : Object.fromEntries(Object.entries(data).filter(([k]) => k !== 'items'));
+    return { meta, items: data.items };
+  }
+  return { meta: null, items: [data] };
+}
+
+const inspector = {
+  row: null,
+  activeTab: 'resolve',
+  tabs: { resolve: null, eval: null },
+};
+
+function openInspector(id) {
+  const d = allData.find(r => String(r._id) === String(id));
+  if (!d) return;
+  inspector.row = d;
+  inspector.tabs.resolve = { url: toServedUrl(d.resolved_file),  status: 'idle', size: null, meta: null, items: null, query: '', page: 0 };
+  inspector.tabs.eval    = { url: toServedUrl(d.evaluated_file), status: 'idle', size: null, meta: null, items: null, query: '', page: 0 };
+  inspector.activeTab = 'resolve';
+
+  document.getElementById('inspector-title').textContent =
+    `${d.model_id} · ${d.mode} · ${new Date(d.timestamp).toLocaleString()}`;
+  document.getElementById('inspector-overlay').classList.add('open');
+  renderTabs();
+  loadTab('resolve');
+}
+
+function closeInspector() {
+  document.getElementById('inspector-overlay').classList.remove('open');
+}
+
+function switchTab(name) {
+  inspector.activeTab = name;
+  renderTabs();
+  loadTab(name);
+}
+
+function renderTabs() {
+  document.querySelectorAll('.modal-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === inspector.activeTab);
+  });
+  renderTabBody();
+}
+
+async function loadTab(name) {
+  const tab = inspector.tabs[name];
+  if (!tab) return;
+  if (!tab.url) { tab.status = 'no-path'; renderTabBody(); return; }
+  if (tab.status !== 'idle') { renderTabBody(); return; } // already checked/loaded — don't refetch
+
+  tab.status = 'checking';
+  renderTabBody();
+
+  let head;
+  try {
+    head = await fetch(tab.url, { method: 'HEAD' });
+  } catch (err) {
+    tab.status = 'error'; tab.error = err.message; renderTabBody(); return;
+  }
+  if (head.status === 404) { tab.status = 'missing'; renderTabBody(); return; }
+  if (!head.ok) { tab.status = 'error'; tab.error = `HTTP ${head.status}`; renderTabBody(); return; }
+
+  tab.size = parseInt(head.headers.get('Content-Length') || '0', 10) || null;
+
+  // resolve / eval are full JSON objects — can't safely truncate JSON mid-stream,
+  // so either load fully or not at all.
+  if (tab.size && tab.size > LARGE_FILE_WARN_BYTES) {
+    tab.status = 'confirm-large';
+    renderTabBody();
+    return;
+  }
+  await fullyLoadJsonArray(name);
+}
+
+async function fullyLoadJsonArray(name) {
+  const tab = inspector.tabs[name];
+  tab.status = 'loading';
+  renderTabBody();
+  try {
+    const res = await fetch(tab.url);
+    const data = await res.json();
+    const split = splitMetaItems(data);
+    tab.meta = split.meta;
+    tab.items = split.items;
+    tab.status = 'loaded';
+  } catch (err) {
+    tab.status = 'error'; tab.error = err.message;
+  }
+  renderTabBody();
+}
+
+function renderTabBody() {
+  const tab = inspector.tabs[inspector.activeTab];
+  const body = document.getElementById('inspector-body');
+  if (!tab) { body.innerHTML = ''; return; }
+
+  switch (tab.status) {
+    case 'idle':
+    case 'checking':
+      body.innerHTML = `<div class="modal-status">Checking file…</div>`;
+      return;
+    case 'no-path':
+      body.innerHTML = `<div class="modal-status">Couldn't map this file's path to something fetchable. It should contain "${esc(PROJECT_ROOT_MARKER)}" — adjust PROJECT_ROOT_MARKER / RELATIVE_PREFIX in the script if your folder layout differs.</div>`;
+      return;
+    case 'missing':
+      body.innerHTML = `<div class="modal-status">No file found at this path (it may not be under your local server's document root).</div>`;
+      return;
+    case 'error':
+      body.innerHTML = `<div class="modal-status error">Failed to load: ${esc(tab.error || 'unknown error')}</div>`;
+      return;
+    case 'confirm-large': {
+      const mb = (tab.size / (1024*1024)).toFixed(1);
+      body.innerHTML = `<div class="modal-status">
+        This file is ${mb} MB. Loading and parsing the full JSON may be slow.
+        <div style="margin-top:10px"><button class="btn btn-ghost btn-sm" onclick="fullyLoadJsonArray('${inspector.activeTab}')">Load anyway</button></div>
+      </div>`;
+      return;
+    }
+    case 'loading':
+      body.innerHTML = `<div class="modal-status">Loading…</div>`;
+      return;
+    case 'loaded':
+      renderLoadedTab(tab);
+      return;
+  }
+}
+
+// Builds the "Meta" block (if present) and the "Items" block shell once per
+// load. The Items block contains a stable search input + count + list + pager;
+// only renderListBody() re-runs on filter/page change, so the input never loses
+// focus mid-keystroke.
+function renderLoadedTab(tab) {
+  const body = document.getElementById('inspector-body');
+
+  const metaHtml = tab.meta != null
+    ? `<details class="json-block" open>
+         <summary>Meta</summary>
+         <pre>${esc(JSON.stringify(tab.meta, null, 2))}</pre>
+       </details>`
+    : '';
+
+  body.innerHTML = `
+    ${metaHtml}
+    <details class="json-block" open>
+      <summary>Items (${tab.items.length})</summary>
+      <div class="items-block-body">
+        <div class="modal-toolbar">
+          <input id="tab-filter-input" type="text" placeholder="filter (substring match)…" value="${esc(tab.query)}" />
+          <span class="modal-count" id="tab-count"></span>
+        </div>
+        <div class="json-list" id="tab-json-list"></div>
+        <div class="modal-pager" id="tab-pager"></div>
+      </div>
+    </details>
+  `;
+  document.getElementById('tab-filter-input').addEventListener('input', (e) => {
+    tab.query = e.target.value; tab.page = 0; renderListBody(tab);
+  });
+  renderListBody(tab);
+}
+
+function renderListBody(tab) {
+  const q = (tab.query || '').toLowerCase();
+  const filtered = q ? tab.items.filter(it => JSON.stringify(it).toLowerCase().includes(q)) : tab.items;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  tab.page = Math.min(tab.page, totalPages - 1);
+  const pageItems = filtered.slice(tab.page * PAGE_SIZE, (tab.page + 1) * PAGE_SIZE);
+
+  document.getElementById('tab-count').textContent = `${filtered.length} / ${tab.items.length} items`;
+
+  document.getElementById('tab-json-list').innerHTML = pageItems.map((item, i) => {
+    const idx = tab.page * PAGE_SIZE + i;
+    return `<details class="json-item"><summary>#${idx} ${esc(summarizeItem(item))}</summary><pre>${esc(JSON.stringify(item, null, 2))}</pre></details>`;
+  }).join('') || '<div class="modal-status">No items match.</div>';
+
+  document.getElementById('tab-pager').innerHTML = `
+    <button class="btn btn-ghost btn-sm" ${tab.page<=0?'disabled':''} onclick="changePage(-1)">‹ prev</button>
+    <span>page ${tab.page+1} / ${totalPages}</span>
+    <button class="btn btn-ghost btn-sm" ${tab.page>=totalPages-1?'disabled':''} onclick="changePage(1)">next ›</button>
+  `;
+}
+
+function changePage(delta) {
+  const tab = inspector.tabs[inspector.activeTab];
+  tab.page += delta;
+  renderListBody(tab);
+}
+
+function summarizeItem(item) {
+  if (item && typeof item === 'object') {
+    const keys = ['qid','question','id','sparql','pass_index','beam_rank'];
+    const parts = keys.filter(k => k in item).map(k => `${k}=${String(item[k]).slice(0,40)}`);
+    return parts.join(' · ') || Object.keys(item).slice(0,3).join(', ');
+  }
+  return String(item).slice(0,80);
+}
+
+// ── Keyboard shortcut: Escape → close modal if open, else clear filters ────────
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (document.getElementById('inspector-overlay').classList.contains('open')) {
+    closeInspector();
+  } else {
+    clearFilters();
+  }
+});
+
+loadResults();
+</script>
+</body>
+</html>

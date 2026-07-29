@@ -1,0 +1,13 @@
+format: nested
+
+root: Questions
+nested: Parses
+parse_strategy: first_success   # or: all 
+
+inherit:
+  QuestionId: question_id
+  RawQuestion: question
+  
+fields:
+  ParseId: id
+  Sparql: sparql

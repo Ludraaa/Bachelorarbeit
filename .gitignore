@@ -168,6 +168,7 @@ data/WebQSP/sexpr/*
 LLMs/data/WebQSP*
 LLMs/data/CWQ*
 Reading/*
+LLMs/*
 train_*.txt
 wandb/*
 pred*.txt
@@ -190,3 +191,10 @@ ApacheJena/apache-jena-6.0.0/
 ApacheJena/java/
 *.class
 data/wdql_test1k.json
+data/*
+data2/*
+Freebase-Setup/virtuoso_db.zip
+Freebase-Setup/virtuoso-opensource.tar.gz
+virtuoso-opensource/*
+job.log
+miniconda3/*
