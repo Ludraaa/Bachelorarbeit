@@ -94,5 +94,65 @@
       "response": "output",
       "history": "history"
     }
+  },
+  "CWQ_train.jena": {
+    "file_name": "CWQ_train.jena/examples.json",
+    "formatting": "alpaca",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output",
+      "history": "history"
+    }
+  },
+  "WQSP_qlever_train.sparql": {
+    "file_name": "WQSP_qlever_train.sparql/examples.json",
+    "formatting": "alpaca",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output",
+      "history": "history"
+    }
+  },
+  "CWQ_qlever_train.sparql": {
+    "file_name": "CWQ_qlever_train.sparql/examples.json",
+    "formatting": "alpaca",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output",
+      "history": "history"
+    }
+  },
+  "WWQ_train.sparql": {
+    "file_name": "WWQ_train.sparql/examples.json",
+    "formatting": "alpaca",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output",
+      "history": "history"
+    }
+  },
+  "WWQ_dev.sparql": {
+    "file_name": "WWQ_dev.sparql/examples.json",
+    "formatting": "alpaca",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output",
+      "history": "history"
+    }
+  },
+  "Qald7_train.sparql": {
+    "file_name": "Qald7_train.sparql/examples.json",
+    "formatting": "alpaca",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output",
+      "history": "history"
+    }
   }
 }

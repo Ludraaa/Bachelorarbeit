@@ -509,6 +509,28 @@
     display: flex; align-items: center; justify-content: center; gap: 14px;
     margin-top: 14px; font-family: var(--mono); font-size: 11px; color: var(--muted);
   }
+
+  /* ── Graphs tab ── */
+  .graph-status {
+    color: var(--muted); font-family: var(--mono); font-size: 12px;
+    margin-bottom: 10px;
+  }
+  .graph-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 14px;
+  }
+  .graph-card {
+    border: 1px solid var(--border2); border-radius: var(--radius);
+    background: var(--surface2); overflow: hidden;
+  }
+  .graph-card-title {
+    padding: 8px 10px; font-family: var(--mono); font-size: 11px;
+    color: var(--accent2); border-bottom: 1px solid var(--border);
+  }
+  .graph-card img {
+    display: block; width: 100%; height: auto; background: #fff;
+  }
 </style>
 </head>
 <body>
@@ -532,6 +554,10 @@
     <div class="filter-group">
       <label style="font-size:11px;color:var(--muted);font-family:var(--mono);">model</label>
       <select id="f-model"><option value="">all</option></select>
+    </div>
+    <div class="filter-group">
+      <label style="font-size:11px;color:var(--muted);font-family:var(--mono);">dataset</label>
+      <select id="f-dataset"><option value="">all</option></select>
     </div>
     <div class="filter-group">
       <label style="font-size:11px;color:var(--muted);font-family:var(--mono);">mode</label>
@@ -583,7 +609,7 @@
 
 </div>
 
-<!-- ── Inspector modal: resolve / eval file viewer ── -->
+<!-- ── Inspector modal: resolve / eval / graphs viewer ── -->
 <div class="modal-overlay" id="inspector-overlay">
   <div class="modal-panel">
     <div class="modal-header">
@@ -593,6 +619,7 @@
     <div class="modal-tabs">
       <button class="modal-tab" data-tab="resolve" onclick="switchTab('resolve')">Resolve</button>
       <button class="modal-tab" data-tab="eval"    onclick="switchTab('eval')">Eval</button>
+      <button class="modal-tab" data-tab="graphs"  onclick="switchTab('graphs')">Graphs</button>
     </div>
     <div class="modal-body" id="inspector-body"></div>
   </div>
@@ -699,10 +726,11 @@ function shortEndpoint(url) {
 }
 
 function populateFilters() {
-  fillSelect('f-model',  '_id', d => d.model_id);
-  fillSelect('f-mode',   '_id', d => d.mode);
-  fillSelect('f-entity', '_id', d => normLinker(d._entityLinker));
-  fillSelect('f-pred',   '_id', d => normLinker(d._predLinker));
+  fillSelect('f-model',   '_id', d => d.model_id);
+  fillSelect('f-dataset', '_id', d => d.dataset);
+  fillSelect('f-mode',    '_id', d => d.mode);
+  fillSelect('f-entity',  '_id', d => normLinker(d._entityLinker));
+  fillSelect('f-pred',    '_id', d => normLinker(d._predLinker));
 
   const epSel = document.getElementById('f-endpoint');
   epSel.innerHTML = '<option value="">all</option>';
@@ -712,7 +740,7 @@ function populateFilters() {
     epSel.appendChild(o);
   });
 
-  ['f-model','f-mode','f-entity','f-pred','f-endpoint'].forEach(id =>
+  ['f-model','f-dataset','f-mode','f-entity','f-pred','f-endpoint'].forEach(id =>
     document.getElementById(id).addEventListener('change', renderTable));
 }
 
@@ -728,7 +756,7 @@ function fillSelect(id, _unused, getter) {
 }
 
 function clearFilters() {
-  ['f-model','f-mode','f-entity','f-pred','f-endpoint']
+  ['f-model','f-dataset','f-mode','f-entity','f-pred','f-endpoint']
     .forEach(id => document.getElementById(id).value = '');
   renderTable();
 }
@@ -736,6 +764,7 @@ function clearFilters() {
 function filteredData() {
   const f = {
     model:    document.getElementById('f-model').value,
+    dataset:  document.getElementById('f-dataset').value,
     mode:     document.getElementById('f-mode').value,
     entity:   document.getElementById('f-entity').value,
     pred:     document.getElementById('f-pred').value,
@@ -743,6 +772,7 @@ function filteredData() {
   };
   return allData.filter(d => {
     if (f.model    && d.model_id               !== f.model)    return false;
+    if (f.dataset  && d.dataset                !== f.dataset)  return false;
     if (f.mode     && d.mode                   !== f.mode)     return false;
     if (f.entity   && normLinker(d._entityLinker) !== f.entity) return false;
     if (f.pred     && normLinker(d._predLinker) !== f.pred)    return false;
@@ -1085,11 +1115,13 @@ document.getElementById('inspector-overlay').addEventListener('click', (e) => {
   if (e.target.id === 'inspector-overlay') closeInspector();
 });
 
-// ── Inspector modal: resolve / eval viewer ──────────────────────────────────
+// ── Inspector modal: resolve / eval / graphs viewer ─────────────────────────
 // resolved_file / evaluated_file are JSON objects shaped like {meta, items}. We
 // render "Meta" and "Items" as separate top-level expandable blocks, and each
 // entry inside items as its own expandable block within a searchable, paginated
 // list (so opening a 1800-item run doesn't render 1800 <pre> blocks at once).
+// The Graphs tab shows the PNG plots written by analysis.py's generate_plots()
+// alongside the evaluated file, in a folder named "{eval_stem}_plots/".
 const PAGE_SIZE = 50;
 const LARGE_FILE_WARN_BYTES = 25 * 1024 * 1024;   // 25 MB — confirm before full JSON.parse
 
@@ -1107,6 +1139,15 @@ function toServedUrl(absPath) {
   return RELATIVE_PREFIX + absPath.slice(idx + PROJECT_ROOT_MARKER.length);
 }
 
+// Maps a run's evaluated_file path to the "{eval_stem}_plots/" directory
+// analysis.py writes its PNG/PDF figures into (see analysis_plots_dir() in
+// analysis.py: eval_out.parent / f"{eval_out.stem}_plots").
+function toServedPlotsDir(d) {
+  const evalUrl = toServedUrl(d.evaluated_file);
+  if (!evalUrl || !evalUrl.endsWith('.json')) return null;
+  return evalUrl.slice(0, -'.json'.length) + '_plots/';
+}
+
 // Splits a loaded JSON value into {meta, items}. Handles the {meta, items} shape
 // directly; falls back to treating a plain array as items with no meta; and as
 // a last resort wraps an unrecognised object as a single item so something is
@@ -1122,10 +1163,36 @@ function splitMetaItems(data) {
   return { meta: null, items: [data] };
 }
 
+// Builds the list of plot images we'd expect for a run, based on its
+// predicate linker chain — mirrors the filenames generate_plots() in
+// analysis.py writes (winning_pass_distribution, per-pass winning-index
+// histograms, per-pass sensitivity curves, estimated_time_savings). We don't
+// know upfront whether analysis was actually run (--skip_analysis) or
+// whether this run predates the hyperparameter-sensitivity feature, so every
+// candidate is just an <img> whose onerror hides it — only files that
+// actually exist end up shown.
+function graphImageList(d) {
+  const lids = d._predLinker == null ? [] : (Array.isArray(d._predLinker) ? d._predLinker : [d._predLinker]);
+  const sanitize = s => String(s).replace(/\./g, '_');
+
+  const files = [
+    { title: 'Winning pass distribution', file: 'winning_pass_distribution.png' },
+  ];
+  lids.forEach(lid => {
+    files.push({ title: `Winning index distributions — ${lid}`, file: `winning_index_distributions_${sanitize(lid)}.png` });
+  });
+  lids.forEach(lid => {
+    files.push({ title: `Sensitivity curves — ${lid}`, file: `sensitivity_${sanitize(lid)}.png` });
+  });
+  files.push({ title: 'Estimated time savings', file: 'estimated_time_savings.png' });
+
+  return files;
+}
+
 const inspector = {
   row: null,
   activeTab: 'resolve',
-  tabs: { resolve: null, eval: null },
+  tabs: { resolve: null, eval: null, graphs: null },
 };
 
 function openInspector(id) {
@@ -1134,6 +1201,7 @@ function openInspector(id) {
   inspector.row = d;
   inspector.tabs.resolve = { url: toServedUrl(d.resolved_file),  status: 'idle', size: null, meta: null, items: null, query: '', page: 0 };
   inspector.tabs.eval    = { url: toServedUrl(d.evaluated_file), status: 'idle', size: null, meta: null, items: null, query: '', page: 0 };
+  inspector.tabs.graphs  = { url: toServedPlotsDir(d), status: 'idle', images: [], loadedCount: 0, failedCount: 0 };
   inspector.activeTab = 'resolve';
 
   document.getElementById('inspector-title').textContent =
@@ -1161,6 +1229,8 @@ function renderTabs() {
 }
 
 async function loadTab(name) {
+  if (name === 'graphs') { loadGraphsTab(); return; }
+
   const tab = inspector.tabs[name];
   if (!tab) return;
   if (!tab.url) { tab.status = 'no-path'; renderTabBody(); return; }
@@ -1207,10 +1277,26 @@ async function fullyLoadJsonArray(name) {
   renderTabBody();
 }
 
+// Graphs tab doesn't fetch/parse JSON — it just points a grid of <img> tags
+// at candidate plot files and lets each image's onload/onerror report back
+// whether that particular plot exists.
+function loadGraphsTab() {
+  const tab = inspector.tabs.graphs;
+  if (!tab) return;
+  if (!tab.url) { tab.status = 'no-path'; renderTabBody(); return; }
+  if (tab.status === 'idle') {
+    tab.images = graphImageList(inspector.row).map(g => ({ ...g, url: tab.url + g.file }));
+    tab.status = 'loaded';
+  }
+  renderTabBody();
+}
+
 function renderTabBody() {
   const tab = inspector.tabs[inspector.activeTab];
   const body = document.getElementById('inspector-body');
   if (!tab) { body.innerHTML = ''; return; }
+
+  if (inspector.activeTab === 'graphs') { renderGraphsTabBody(tab); return; }
 
   switch (tab.status) {
     case 'idle':
@@ -1240,6 +1326,67 @@ function renderTabBody() {
     case 'loaded':
       renderLoadedTab(tab);
       return;
+  }
+}
+
+function renderGraphsTabBody(tab) {
+  const body = document.getElementById('inspector-body');
+
+  if (tab.status === 'no-path') {
+    body.innerHTML = `<div class="modal-status">Couldn't map this run's evaluated file to a plots folder. It should contain "${esc(PROJECT_ROOT_MARKER)}" — adjust PROJECT_ROOT_MARKER / RELATIVE_PREFIX in the script if your folder layout differs.</div>`;
+    return;
+  }
+  if (tab.status !== 'loaded' || !tab.images.length) {
+    body.innerHTML = `<div class="modal-status">No plots expected for this run — predicate linker info is missing.</div>`;
+    return;
+  }
+
+  tab.loadedCount = 0;
+  tab.failedCount = 0;
+
+  body.innerHTML = `
+    <div class="graph-status" id="graph-status">Loading plots…</div>
+    <div class="graph-grid" id="graph-grid">
+      ${tab.images.map((g, i) => `
+        <div class="graph-card" id="graph-card-${i}">
+          <div class="graph-card-title">${esc(g.title)}</div>
+          <img src="${esc(g.url)}" alt="${esc(g.title)}"
+               onload="onGraphLoad(${i})" onerror="onGraphError(${i})" />
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function onGraphLoad(i) {
+  const tab = inspector.tabs.graphs;
+  if (!tab || inspector.activeTab !== 'graphs') return;
+  tab.loadedCount += 1;
+  updateGraphStatus(tab);
+}
+
+function onGraphError(i) {
+  const tab = inspector.tabs.graphs;
+  if (!tab || inspector.activeTab !== 'graphs') return;
+  tab.failedCount += 1;
+  const card = document.getElementById(`graph-card-${i}`);
+  if (card) card.style.display = 'none';
+  updateGraphStatus(tab);
+}
+
+function updateGraphStatus(tab) {
+  const total = tab.images.length;
+  const done = tab.loadedCount + tab.failedCount;
+  const statusEl = document.getElementById('graph-status');
+  if (!statusEl) return;
+  if (done < total) {
+    statusEl.textContent = `Loading plots… (${done}/${total})`;
+    statusEl.style.display = 'block';
+  } else if (tab.loadedCount === 0) {
+    statusEl.textContent = 'No plots found for this run — analysis may have been skipped (--skip_analysis), the run predates the analysis feature, or the plots folder isn\'t served by your local server.';
+    statusEl.style.display = 'block';
+  } else {
+    statusEl.style.display = 'none';
   }
 }
 

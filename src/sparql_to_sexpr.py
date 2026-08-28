@@ -225,7 +225,7 @@ def process_split(
     conv_skipped = 0
     exec_ok      = 0
     exec_failed  = 0
-    converter    = CONVERTERS[mode]
+    converter    = CONVERTERS.get(mode)
     endpoint_url = os.environ.get("ENDPOINT_URL")
 
     if not endpoint_url:

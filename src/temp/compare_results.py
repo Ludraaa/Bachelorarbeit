@@ -17,6 +17,11 @@ def get_id(item):
     return item.get("qid") or item.get("ID")
 
 
+def get_question(item):
+    q = item.get("question")
+    return q.strip() if isinstance(q, str) else q
+
+
 def get_f1(item):
     return item.get("f1", item.get("assignment_f1"))
 
@@ -30,10 +35,20 @@ def main():
         "--a_better_only",
         action="store_true"
     )
+    parser.add_argument(
+        "--by",
+        choices=["id", "question"],
+        default="id",
+        help="Key to match items on across the two files. Use 'question' "
+             "when IDs differ between file_a and file_b but the question "
+             "text is shared (default: id).",
+    )
     args = parser.parse_args()
 
-    f1_a = {get_id(i): get_f1(i) for i in load_items(args.file_a) if get_id(i) is not None}
-    f1_b = {get_id(i): get_f1(i) for i in load_items(args.file_b) if get_id(i) is not None}
+    get_key = get_question if args.by == "question" else get_id
+
+    f1_a = {get_key(i): get_f1(i) for i in load_items(args.file_a) if get_key(i) is not None}
+    f1_b = {get_key(i): get_f1(i) for i in load_items(args.file_b) if get_key(i) is not None}
 
     all_ids = set(f1_a) | set(f1_b)
 

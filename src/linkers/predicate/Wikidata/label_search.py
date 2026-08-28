@@ -1,8 +1,10 @@
-from src.linkers.base import BasePredicateLinker, LinkingInput, LinkingOutput
-from src.utils.retry import call_with_retry
-import requests
 import os
 from collections import OrderedDict
+
+import requests
+
+from src.linkers.base import BasePredicateLinker, LinkingInput, LinkingOutput
+from src.utils.retry import call_with_retry
 
 
 ENDPOINT = os.environ.get("ENDPOINT_URL", "http://localhost:7001/sparql")
@@ -36,11 +38,24 @@ class BoundedCache(OrderedDict):
         super().__setitem__(key, value)
 
 
-
 class Linker(BasePredicateLinker):
+    """
+    Wikidata predicate linker: direct rdfs:label substring/prefix/exact
+    match against every wikibase:directClaim property, scored by match
+    tightness. This is the Wikidata replacement for the Freebase
+    passthrough predicate linker (which just echoes fbp:-tagged tokens
+    straight through with confidence 1.0, since ChatKBQA's Freebase
+    predictions already emit canonical relation paths) -- Wikidata
+    predictions instead emit human-readable property text that has to be
+    resolved to a PID via an actual lookup, hence the SPARQL query.
+    """
+
     def __init__(self, k: int = 5):
         self.k = k
         self._cache: BoundedCache = BoundedCache(maxsize=125)
+
+    def get_params(self) -> dict:
+        return {"k": self.k}
 
     # --------------------------------------------
     # SPARQL

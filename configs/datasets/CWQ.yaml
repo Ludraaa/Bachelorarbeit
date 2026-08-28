@@ -1,5 +1,4 @@
 fields:
-  webqsp_ID: question_id
-  ID: id
+  id: id
   question: question
   sparql: sparql

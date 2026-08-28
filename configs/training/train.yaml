@@ -1,6 +1,6 @@
 ### Model
-#model_name_or_path: LLMs/Models/Qwen25-7b-hf/
-model_name_or_path: LLMs/Models/llama-2-13b/
+model_name_or_path: LLMs/Models/Qwen25-7b-hf/
+#model_name_or_path: LLMs/Models/llama-2-13b/
 
 
 ### Method
@@ -9,32 +9,29 @@ do_train: true
 finetuning_type: lora
 
 ### LoRA config
-lora_target: all
-lora_rank: 32
-lora_alpha: 64
-lora_dropout: 0.1
+lora_target: q_proj,v_proj
+#lora_rank: 32
+#lora_alpha: 64
+#lora_dropout: 0.1
 
 ### Dataset
-dataset: CWQ_train.sparql  
+dataset: CWQ_qlever_train.sparql  
 dataset_dir: LLMs/data    
 
-#template: qwen 
-template: llama2               
-
-cutoff_len: 2048
-max_samples: 50000
+template: qwen 
+#template: llama2               
 
 ### Output
-output_dir: LLMs/MyModels/Llama-2-13b_CWQ-sparql/
+output_dir: LLMs/MyModels/Qwen25-7b_CWQ_qlever-sparql/
 logging_steps: 10
-save_steps: 500
+save_steps: 1000
 overwrite_output_dir: true
 
 ### Training
 per_device_train_batch_size: 4
 gradient_accumulation_steps: 4
 learning_rate: 5e-5
-num_train_epochs: 100
+num_train_epochs: 10
 lr_scheduler_type: cosine
 warmup_ratio: 0.1
 bf16: true

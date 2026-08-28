@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import json
+import time
 import argparse
 import importlib.util
 from dataclasses import dataclass, field
@@ -61,6 +62,19 @@ def _get_pass_val(values: list, pass_idx: int):
 
 
 # ---------------------------------------------------------------------------
+# Per-item timeout helper
+
+def _deadline_exceeded(deadline: float | None) -> bool:
+    """
+    `deadline` is an absolute time.perf_counter() timestamp, or None for
+    "no limit". Checked at cheap, regular intervals inside the beam /
+    entity-permutation / predicate-permutation / SPARQL-candidate loops so
+    a slow item can be abandoned promptly instead of running to completion.
+    """
+    return deadline is not None and time.perf_counter() > deadline
+
+
+# ---------------------------------------------------------------------------
 # Args
 
 def parse_args():
@@ -116,11 +130,10 @@ def parse_args():
     parser.add_argument(
         "--beam_limits",
         type=str,
-        default="0",
         help=(
             "Comma-separated per-pass beam caps, one per predicate linker "
             "(use 0 for no limit, last value is reused). "
-            "Example: --beam_limits 0,50"
+            "Example: --beam_limits 5,3"
         ),
     )
 
@@ -132,6 +145,20 @@ def parse_args():
             'JSON dict overriding constructor kwargs per linker id, e.g. '
             '\'{"ChatKBQA.gold_simcse": {"gold_threshold": 0.5}}\'. '
             'Applies to both entity and predicate linkers by id.'
+        ),
+    )
+
+    parser.add_argument(
+        "--item_time_limit_sec",
+        type=float,
+        default=None,
+        help=(
+            "Optional wall-clock time budget per item, in seconds, shared "
+            "across all beams and all predicate-linker passes for that item. "
+            "If exceeded, the item is abandoned immediately (no further "
+            "beams/passes are tried), recorded as unresolved with "
+            "timed_out=true, and processing moves on to the next item. "
+            "Default: no limit."
         ),
     )
 
@@ -156,9 +183,10 @@ def load_predictions(data_dir, dataset, model_id, split, mode):
     print(f"Loading predictions from: {path}")
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
-        ret = data["items"]
-    print(f"Loaded {len(ret)} items")
-    return ret
+        meta = data.get("meta", {})
+        items = data.get("items", {})
+    print(f"Loaded {len(items)} items")
+    return [items, meta]
 
 
 def resolve_output_path(args, linker_id: str) -> str:
@@ -340,9 +368,13 @@ class PassResult:
     used_beam_rank: int | None = None
     entity_map_used: dict = field(default_factory=dict)
     predicate_map_used: dict = field(default_factory=dict)
+    entity_perm_idx: int | None = None
+    predicate_perm_idx: int | None = None
     pass_index: int = -1
     pass_linker_id: str = ""
     beam_debug: list = field(default_factory=list)
+    runtime_sec: float = 0.0
+    timed_out: bool = False
 
 
 def run_single_pass(
@@ -366,13 +398,20 @@ def run_single_pass(
     pass_index: int,
     pass_linker_id: str,
     debug: bool,
+    deadline: float | None = None,
 ) -> PassResult:
+    pass_start = time.perf_counter()
     result = PassResult(pass_index=pass_index, pass_linker_id=pass_linker_id)
 
     beams_to_try = beams if not beam_limit else beams[:beam_limit]
 
     for beam_rank, beam in enumerate(beams_to_try):
-        if result.found:
+        if result.found or result.timed_out:
+            break
+
+        if _deadline_exceeded(deadline):
+            _log(f"  beam {beam_rank}: item time limit exceeded, aborting pass '{pass_linker_id}'")
+            result.timed_out = True
             break
 
         _log(f"  beam {beam_rank}: extract labels")
@@ -422,7 +461,12 @@ def run_single_pass(
             }
 
         for ep_idx, (entity_map, ep_score) in enumerate(entity_permutations):
-            if result.found:
+            if result.found or result.timed_out:
+                break
+
+            if _deadline_exceeded(deadline):
+                _log(f"  beam {beam_rank}, ep {ep_idx}: item time limit exceeded, aborting pass '{pass_linker_id}'")
+                result.timed_out = True
                 break
 
             _log(f"  beam {beam_rank}, ep {ep_idx}/{len(entity_permutations)}: predicate_linker.link (n_pred_labels={len(predicate_labels)})")
@@ -452,7 +496,12 @@ def run_single_pass(
                 predicate_permutations = [(p_out.label_map, 0.0)]
 
             for pp_idx, (predicate_map, pp_score) in enumerate(predicate_permutations):
-                if result.found:
+                if result.found or result.timed_out:
+                    break
+
+                if _deadline_exceeded(deadline):
+                    _log(f"  beam {beam_rank}, ep {ep_idx}, pp {pp_idx}: item time limit exceeded, aborting pass '{pass_linker_id}'")
+                    result.timed_out = True
                     break
 
                 _log(f"  beam {beam_rank}, ep {ep_idx}, pp {pp_idx}: substitute + to_sparql")
@@ -472,8 +521,14 @@ def run_single_pass(
                 has_results      = False
                 sparql_candidate = sparql_candidates[0] if sparql_candidates else None
                 candidates_tried = []
+                cand_loop_timed_out = False
 
                 for cand_idx, cand_sparql in enumerate(sparql_candidates):
+                    if _deadline_exceeded(deadline):
+                        _log(f"  beam {beam_rank}, ep {ep_idx}, pp {pp_idx}: item time limit exceeded before SPARQL candidate {cand_idx}")
+                        cand_loop_timed_out = True
+                        break
+
                     _log(f"  beam {beam_rank}, ep {ep_idx}, pp {pp_idx}: execute_sparql (candidate {cand_idx})")
                     _log(f"  sparql candidate {cand_idx}: \n{cand_sparql}")
                     cand_bindings    = execute_sparql(cand_sparql)
@@ -511,7 +566,12 @@ def run_single_pass(
                         "conversion_ok": conversion_ok,
                         "exec_ok": exec_ok,
                         "has_results": has_results,
+                        "timed_out": cand_loop_timed_out,
                     })
+
+                if cand_loop_timed_out:
+                    result.timed_out = True
+                    break
 
                 if has_results:
                     result.found = True
@@ -519,10 +579,13 @@ def run_single_pass(
                     result.used_beam_rank = beam_rank
                     result.entity_map_used = entity_map
                     result.predicate_map_used = predicate_map
+                    result.entity_perm_idx = ep_idx
+                    result.predicate_perm_idx = pp_idx
 
         if debug and beam_debug_entry:
             result.beam_debug.append(beam_debug_entry)
 
+    result.runtime_sec = time.perf_counter() - pass_start
     return result
 
 
@@ -532,18 +595,7 @@ def run_single_pass(
 def _entity_label_fallback(sparql: str) -> str | None:
     """
     Mirrors ChatKBQA's own zero-result retry in aggressive_top_k_eval_new.py's
-    execute_normed_s_expr_from_label_maps(): if the direct ns:m.MID triple
-    match returns nothing, every ns:m.MID reference gets swapped for a fresh
-    variable bound via an rdfs:label string match (English-filtered), and
-    the query is retried. Recovers cases where the exact MID triple doesn't
-    hold in this KB snapshot but the label-identity still does.
-
-    This is Freebase-specific (ns: namespace, m./g. MID convention, rdfs:label
-    as identity anchor) — see to_sparql() for why it's only wired up for the
-    chatkbqa/chatkbqa_cwq modes and not sparql/jena.
-
-    Returns None if there's nothing to rewrite (no ns:m.* references) or if
-    the anchor line this hooks onto isn't present in the query.
+    execute_normed_s_expr_from_label_maps()
     """
     entities = sorted(set(re.findall(r'\bns:(m\.[A-Za-z0-9_]+)\b', sparql)))
     if not entities:
@@ -617,7 +669,7 @@ def inject_prefixes(sparql: str, common_prefixes: dict[str, str]) -> str:
 
 
 def execute_sparql(sparql: str) -> list | None:
-    # Inject LIMIT if absent — we only care about existence of results
+    # only care about existence of results
     if not re.search(r'\bLIMIT\b', sparql, re.IGNORECASE):
         sparql += "\nLIMIT 10"
 
@@ -684,12 +736,27 @@ def resolve_item(
     mode: str,
     type_map: dict,
     debug: bool,
+    time_limit_sec: float | None = None,
 ) -> tuple[PassResult, list[PassResult]]:
     all_pass_results: list[PassResult] = []
+
+    item_deadline = (
+        time.perf_counter() + time_limit_sec if time_limit_sec is not None else None
+    )
 
     for pass_idx, (pred_linker, linker_id) in enumerate(
         zip(predicate_linkers, predicate_linker_ids)
     ):
+        if _deadline_exceeded(item_deadline):
+            _log(f"  pass {pass_idx} ({linker_id}): item time limit already exceeded, skipping remaining passes")
+            all_pass_results.append(PassResult(
+                pass_index=pass_idx,
+                pass_linker_id=linker_id,
+                timed_out=True,
+                runtime_sec=0.0,
+            ))
+            break
+
         beam_limit = _get_pass_val(beam_limits, pass_idx)
         k1 = _get_pass_val(k1_list, pass_idx)
         t1 = _get_pass_val(t1_list, pass_idx)
@@ -717,15 +784,68 @@ def resolve_item(
             pass_index=pass_idx,
             pass_linker_id=linker_id,
             debug=debug,
+            deadline=item_deadline,
         )
-        _log(f"  pass {pass_idx} ({linker_id}): done, found={pass_result.found}")
+        _log(f"  pass {pass_idx} ({linker_id}): done, found={pass_result.found}, timed_out={pass_result.timed_out}, runtime={pass_result.runtime_sec:.2f}s")
 
         all_pass_results.append(pass_result)
 
         if pass_result.found:
             return pass_result, all_pass_results
 
+        if pass_result.timed_out:
+            _log(f"  item time limit exceeded during pass {pass_idx} ({linker_id}); abandoning item, skipping remaining passes")
+            break
+
     return all_pass_results[-1], all_pass_results
+
+
+# ---------------------------------------------------------------------------
+# Runtime aggregation helpers
+
+def _new_runtime_agg(predicate_linker_ids: list[str]) -> dict:
+    agg = {"total_count": 0, "total_sec": 0.0, "by_resolution": {}}
+    for lid in predicate_linker_ids:
+        agg["by_resolution"][lid] = {"count": 0, "total_sec": 0.0}
+    agg["by_resolution"]["_unresolved"] = {"count": 0, "total_sec": 0.0}
+    agg["by_resolution"]["_timeout"] = {"count": 0, "total_sec": 0.0}
+    return agg
+
+
+def _record_runtime(
+    agg: dict,
+    item_runtime_sec: float,
+    winning_pass_linker: str | None,
+    timed_out: bool = False,
+) -> None:
+    agg["total_count"] += 1
+    agg["total_sec"] += item_runtime_sec
+    if timed_out:
+        key = "_timeout"
+    elif winning_pass_linker is not None:
+        key = winning_pass_linker
+    else:
+        key = "_unresolved"
+    bucket = agg["by_resolution"].setdefault(key, {"count": 0, "total_sec": 0.0})
+    bucket["count"] += 1
+    bucket["total_sec"] += item_runtime_sec
+
+
+def _runtime_summary(agg: dict) -> dict:
+    avg_per_item = (agg["total_sec"] / agg["total_count"]) if agg["total_count"] else None
+    by_resolution = {}
+    for key, bucket in agg["by_resolution"].items():
+        avg = (bucket["total_sec"] / bucket["count"]) if bucket["count"] else None
+        by_resolution[key] = {
+            "count": bucket["count"],
+            "total_sec": round(bucket["total_sec"], 4),
+            "avg_sec": round(avg, 4) if avg is not None else None,
+        }
+    return {
+        "avg_runtime_sec_per_item": round(avg_per_item, 4) if avg_per_item is not None else None,
+        "total_runtime_sec": round(agg["total_sec"], 4),
+        "runtime_by_resolution": by_resolution,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -740,8 +860,6 @@ def main():
     entity_linker_ids = [s.strip() for s in args.entity_linkers.split(",") if s.strip()]
     predicate_linker_ids = [s.strip() for s in args.predicate_linkers.split(",") if s.strip()]
     n_passes = len(predicate_linker_ids)
-
-    beam_limits = _parse_ints(args.beam_limits, fallback=0)
 
     k1_list = _parse_ints(args.k1_per_pass, fallback=25)
     t1_list = _parse_floats(args.t1_per_pass, fallback=0.0)
@@ -780,9 +898,20 @@ def main():
         lid: linker.get_params() for lid, linker in zip(predicate_linker_ids, predicate_linkers)
     }
 
-    data = load_predictions(
+    data, meta = load_predictions(
         args.data_dir, args.dataset, args.model_id, args.split, args.mode,
-    )
+    )        
+
+    if meta.get("max_beams") is not None and args.beam_limits is None:
+        print("Found max beams in prediction file")
+        beam_limits = [meta.get("max_beams", 0)]
+    elif args.beam_limits:
+        beam_limits = _parse_ints(args.beam_limits, fallback=0)
+        print("Beam limit explicitly passed.")
+    else:
+        raise ValueError(
+            "No metadata found in prediction file, please explicitly pass --beam_limits"
+        )
 
     # Load the inverted type label map if one exists for this KB/dataset/split
     _type_map_path = Path(args.data_dir) / args.dataset / "generation" / "label_maps" \
@@ -812,6 +941,8 @@ def main():
 
     pass_counts = {lid: 0 for lid in predicate_linker_ids}
     executable_count = 0
+    timeout_count = 0
+    runtime_agg = _new_runtime_agg(predicate_linker_ids)
 
     for r in existing_results:
         if r.get("executable"):
@@ -819,6 +950,17 @@ def main():
             lid = r.get("winning_pass_linker", "")
             if lid in pass_counts:
                 pass_counts[lid] += 1
+
+        if r.get("timed_out"):
+            timeout_count += 1
+
+        if "item_runtime_sec" in r and r["item_runtime_sec"] is not None:
+            _record_runtime(
+                runtime_agg,
+                r["item_runtime_sec"],
+                r.get("winning_pass_linker"),
+                timed_out=bool(r.get("timed_out")),
+            )
 
     if n_done > 0:
         print(f"Resuming: {n_done}/{len(data)} items already processed, skipping ahead.")
@@ -828,8 +970,9 @@ def main():
         print("All items already processed. Finalising JSON output.")
         meta = _build_meta(args, entity_linker_ids, predicate_linker_ids, beam_limits,
                            k1_list, t1_list, k2_list, t2_list,
-                           len(data), executable_count, pass_counts,
-                           entity_linker_params, predicate_linker_params)
+                           len(data), executable_count, timeout_count, pass_counts,
+                           entity_linker_params, predicate_linker_params,
+                           runtime_agg)
         out = _finalize_to_json(jsonl_path, meta)
         print(f"Finalised → {out}")
         if args.debug and debug_jsonl_path:
@@ -851,6 +994,7 @@ def main():
     print(f"  t1 per pass:      {[_get_pass_val(t1_list, i) for i in range(n_passes)]}")
     print(f"  k2 per pass:      {[_get_pass_val(k2_list, i) for i in range(n_passes)]}")
     print(f"  t2 per pass:      {[_get_pass_val(t2_list, i) for i in range(n_passes)]}")
+    print(f"  Item time limit:  {args.item_time_limit_sec if args.item_time_limit_sec is not None else 'none'}")
     print(f"  Endpoint:         {ENDPOINT_URL}")
     print(f"  Output (JSONL):   {jsonl_path}\n")
 
@@ -864,6 +1008,7 @@ def main():
 
         _log(f"item {item_idx} START | ID={item.get('ID')} | n_beams={len(beams)} | '{question[:60]}'")
 
+        item_start = time.perf_counter()
         winning, all_passes = resolve_item(
             beams=beams,
             question=question,
@@ -883,23 +1028,57 @@ def main():
             mode=args.mode,
             type_map=type_map,
             debug=args.debug,
+            time_limit_sec=args.item_time_limit_sec,
         )
+        item_runtime_sec = sum(pr.runtime_sec for pr in all_passes)
+        _ = time.perf_counter() - item_start
 
-        _log(f"item {item_idx} END   | found={winning.found} beam_rank={winning.used_beam_rank}")
+        _log(f"item {item_idx} END   | found={winning.found} timed_out={winning.timed_out} beam_rank={winning.used_beam_rank} runtime={item_runtime_sec:.2f}s")
 
         if winning.found:
             executable_count += 1
             pass_counts[winning.pass_linker_id] += 1
 
+        if winning.timed_out:
+            timeout_count += 1
+
+        if winning.found:
+            executed_query = winning.executed_query
+            executed_beam_rank = winning.used_beam_rank
+            entity_map_used = winning.entity_map_used
+            predicate_map_used = winning.predicate_map_used
+            winning_pass_index = winning.pass_index
+            winning_pass_linker = winning.pass_linker_id
+            winning_entity_perm_idx = winning.entity_perm_idx
+            winning_predicate_perm_idx = winning.predicate_perm_idx
+        else:
+            executed_query = None
+            executed_beam_rank = None
+            entity_map_used = None
+            predicate_map_used = None
+            winning_pass_index = None
+            winning_pass_linker = None
+            winning_entity_perm_idx = None
+            winning_predicate_perm_idx = None
+
+        _record_runtime(runtime_agg, item_runtime_sec, winning_pass_linker, timed_out=winning.timed_out)
+
         result = {
             **item,
-            "executed_query":      winning.executed_query,
-            "executed_beam_rank":  winning.used_beam_rank,
-            "entity_map_used":     winning.entity_map_used,
-            "predicate_map_used":  winning.predicate_map_used,
-            "executable":          winning.found,
-            "winning_pass_index":  winning.pass_index,
-            "winning_pass_linker": winning.pass_linker_id,
+            "executed_query":              executed_query,
+            "executed_beam_rank":          executed_beam_rank,
+            "entity_map_used":             entity_map_used,
+            "predicate_map_used":          predicate_map_used,
+            "winning_entity_perm_idx":     winning_entity_perm_idx,
+            "winning_predicate_perm_idx":  winning_predicate_perm_idx,
+            "executable":                  winning.found,
+            "timed_out":                   winning.timed_out,
+            "winning_pass_index":          winning_pass_index,
+            "winning_pass_linker":         winning_pass_linker,
+            "item_runtime_sec":            round(item_runtime_sec, 4),
+            "pass_runtimes_sec": {
+                pr.pass_linker_id: round(pr.runtime_sec, 4) for pr in all_passes
+            },
         }
         _append_jsonl(jsonl_path, result)
 
@@ -910,14 +1089,20 @@ def main():
                 "gold_entity_map":     item.get("gold_entity_map", {}),
                 "gold_relation_map":   item.get("gold_relation_map", {}),
                 "gold_sexpr":          item.get("sexpr_with_labels", ""),
-                "winning_pass_index":  winning.pass_index,
-                "winning_pass_linker": winning.pass_linker_id,
+                "winning_pass_index":  winning_pass_index,
+                "winning_pass_linker": winning_pass_linker,
+                "timed_out":           winning.timed_out,
+                "item_runtime_sec":    round(item_runtime_sec, 4),
                 "passes": [
                     {
                         "pass_index":  pr.pass_index,
                         "pass_linker": pr.pass_linker_id,
                         "found":       pr.found,
+                        "timed_out":   pr.timed_out,
                         "beam_rank":   pr.used_beam_rank,
+                        "entity_perm_idx":    pr.entity_perm_idx,
+                        "predicate_perm_idx": pr.predicate_perm_idx,
+                        "runtime_sec": round(pr.runtime_sec, 4),
                         "beams":       sorted(pr.beam_debug, key=lambda x: x.get("rank", 0)),
                     }
                     for pr in all_passes
@@ -931,8 +1116,9 @@ def main():
     num_items = len(data)
     meta = _build_meta(args, entity_linker_ids, predicate_linker_ids, beam_limits,
                        k1_list, t1_list, k2_list, t2_list,
-                       num_items, executable_count, pass_counts,
-                       entity_linker_params, predicate_linker_params)
+                       num_items, executable_count, timeout_count, pass_counts,
+                       entity_linker_params, predicate_linker_params,
+                       runtime_agg)
 
     out = _finalize_to_json(jsonl_path, meta)
 
@@ -941,9 +1127,15 @@ def main():
         print(f"Debug output → {debug_json_path}")
 
     print(f"\nDone. {executable_count}/{num_items} executable.")
+    if args.item_time_limit_sec is not None:
+        print(f"  Timed out (skipped): {timeout_count}/{num_items}")
     for lid, cnt in pass_counts.items():
         pct = round(cnt / num_items * 100, 1) if num_items else 0
         print(f"  Pass '{lid}': {cnt} items resolved ({pct}%)")
+    rt_summary = meta["runtime"]
+    print(f"Avg runtime/item: {rt_summary['avg_runtime_sec_per_item']}s")
+    for key, bucket in rt_summary["runtime_by_resolution"].items():
+        print(f"  resolved by '{key}': n={bucket['count']}  avg={bucket['avg_sec']}s")
     print(f"Saved to: {out}")
 
 
@@ -961,9 +1153,11 @@ def _build_meta(
     t2_list: list[float],
     num_items: int,
     executable_count: int,
+    timeout_count: int,
     pass_counts: dict,
     entity_linker_params: dict,
     predicate_linker_params: dict,
+    runtime_agg: dict,
 ) -> dict:
     n = len(predicate_linker_ids)
     return {
@@ -982,13 +1176,17 @@ def _build_meta(
         "t1_per_pass":      [_get_pass_val(t1_list, i) for i in range(n)],
         "k2_per_pass":      [_get_pass_val(k2_list, i) for i in range(n)],
         "t2_per_pass":      [_get_pass_val(t2_list, i) for i in range(n)],
+        "item_time_limit_sec": args.item_time_limit_sec,
         "endpoint":         ENDPOINT_URL,
         "data_dir":         args.data_dir,
         "note":             args.note,
         "num_items":        num_items,
         "num_executable":   executable_count,
         "executable_pct":   round(executable_count / num_items * 100, 2) if num_items else 0.0,
+        "num_timed_out":    timeout_count,
+        "timed_out_pct":    round(timeout_count / num_items * 100, 2) if num_items else 0.0,
         "pass_counts":      pass_counts,
+        "runtime":          _runtime_summary(runtime_agg),
     }
 
 

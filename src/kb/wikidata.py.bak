@@ -26,137 +26,10 @@ PREDICATE_PREFIXES: tuple[str, ...] = tuple(
            key=len, reverse=True)
 )
 
-# -- extraction: grammar-driven label boundaries -----------------------------
-#
-# Property paths only ever compose predicates, never entities, so entity
-# consumption never needs path-operator lookahead -- '/','*','+' etc. after
-# `wd:` are always genuine label content (e.g. "AC/DC").
-#
-# Predicate labels, however, *can* legitimately contain reserved characters
-# (confirmed against the real Wikidata label cache: P706 "located in/on
-# physical feature" -> contains '/'; P527 "has part(s)" -> contains '(' ')'),
-# so a flat stop-character class is wrong -- it truncates real, in-scope
-# properties. A vocabulary lookup is also wrong on its own: the model can
-# legitimately predict predicates absent from any training-time label cache
-# (that's the whole point of testing generalization), so falling back to a
-# broken heuristic for unseen predicates would defeat the fix where it
-# matters most.
-#
-# The disambiguation that actually works is grammar, not a character class
-# or a lookup: genuine SPARQL property-path composition always re-prefixes
-# each atom ('wdt:X/wdt:Y', '(wdt:X)*', '^wdt:X'). A '/', '(', '|' is a path
-# operator only when what follows it is itself another prefixed predicate
-# reference; otherwise it's label content, regardless of whether that label
-# was ever seen in training. This needs no vocabulary and handles unseen
-# predicates identically to seen ones.
-#
-# The one shape this can't resolve from syntax alone: a label whose own
-# text ends in '.', ',', or ';' immediately before whitespace is
-# indistinguishable from a real SPARQL terminator glued on with no space.
-# That residual is treated as structural (the common case), which only
-# matters for labels that both contain trailing punctuation AND sit at a
-# token boundary with no following space -- narrow enough to accept.
-
-_PATH_PREFIX_LOOKAHEAD = re.compile(
-    r"^\^?(?:" + "|".join(PREDICATE_PREFIXES) + r"):"
+_PRED_ENTITY_RE = re.compile(r"\bwd:(\S+)")
+_PRED_PREDICATE_RE = re.compile(
+    r"\b(?:" + "|".join(PREDICATE_PREFIXES) + r"):(\S+)"
 )
-
-
-def _looks_like_path_continuation(text: str, pos: int) -> bool:
-    """
-    True if text[pos:] starts with (optionally through one '(') another
-    prefixed predicate reference -- i.e. this position is a genuine
-    property-path separator/group-opener, not label content. Real path
-    composition always re-prefixes each atom; label punctuation never
-    does, so this needs no knowledge of what the label actually is.
-    """
-    rest = text[pos:]
-    if rest.startswith("("):
-        rest = rest[1:]
-    return bool(_PATH_PREFIX_LOOKAHEAD.match(rest))
-
-
-def _consume_predicate_label(text: str, start: int) -> str:
-    depth = 0  # parens opened as LABEL content, not path groups
-    i = start
-    n = len(text)
-    while i < n:
-        ch = text[i]
-
-        if ch in " \t\n":
-            break
-
-        if ch in "*+^":
-            break  # quantifiers/inverse -- essentially never real label content
-
-        if ch in "/|":
-            if _looks_like_path_continuation(text, i + 1):
-                break  # genuine path separator
-            i += 1
-            continue  # label content, e.g. "located_in/on_physical_feature"
-
-        if ch == "(":
-            if depth == 0 and _looks_like_path_continuation(text, i + 1):
-                break  # genuine path-group opener, e.g. "/(wdt:subclass_of)*"
-            depth += 1
-            i += 1
-            continue  # label content, e.g. "has_part(s)"
-
-        if ch == ")":
-            if depth == 0:
-                break  # closes an enclosing structural group, not ours
-            depth -= 1
-            i += 1
-            continue
-
-        if ch in ".,;":
-            # A label's own trailing punctuation and a SPARQL terminator
-            # glued on with no space look identical from the string alone.
-            # Treat as structural only when directly followed by
-            # whitespace/end (not embedded mid-word), so
-            # "Ethnologue.com_code" keeps its dot.
-            nxt = text[i + 1] if i + 1 < n else ""
-            if nxt == "" or nxt in " \t\n":
-                break
-            i += 1
-            continue
-
-        i += 1
-
-    return text[start:i]
-
-
-def _consume_entity_label(text: str, start: int) -> str:
-    # Entities never sit in path-expression position, so no operator
-    # lookahead is needed -- '/', '*', '+' etc. always pass through as
-    # label content. Only paren-balance and the same trailing-punctuation
-    # rule apply.
-    depth = 0
-    i = start
-    n = len(text)
-    while i < n:
-        ch = text[i]
-        if ch in " \t\n":
-            break
-        if ch == "(":
-            depth += 1
-        elif ch == ")":
-            if depth == 0:
-                break
-            depth -= 1
-        elif ch in ".,;":
-            nxt = text[i + 1] if i + 1 < n else ""
-            if nxt == "" or nxt in " \t\n":
-                break
-        i += 1
-    return text[start:i]
-
-
-_ENTITY_ANCHOR_RE = re.compile(r"\bwd:")
-_PREDICATE_ANCHOR_RE = re.compile(
-    r"\b(?:" + "|".join(PREDICATE_PREFIXES) + r"):"
-)
-
 
 # Wikidata-only: approximate analogue of Freebase's TYPES_QUERY.
 #
@@ -301,40 +174,13 @@ class Wikidata(BaseKB):
     def extract_from_prediction(self, prediction: str) -> tuple[list[str], list[str]]:
         """
         entities: wd:-tagged tokens only (entities are never reified).
-        Consumed with paren-balance tracking so labels like
-        'Georgia_(country)' or 'AC/DC' survive intact -- property paths
-        never apply to entities, so path-operator characters after `wd:`
-        are always genuine label content.
-
         predicates: every PREDICATE_PREFIXES-tagged token, regardless of
         which reification slot it's in -- wdt:some_label, p:some_label, and
         pq:some_label are all just "some_label" needing the same label->PID
         lookup, so they're pooled into one flat, deduped predicate list.
-        Consumed with grammar-based path-operator lookahead rather than a
-        vocabulary or a flat stop-character set: real predicate labels can
-        themselves contain '/' and '(' (e.g. "located in/on physical
-        feature", "has part(s)"), so a character class alone would
-        truncate valid, in-scope properties, and a vocabulary lookup would
-        fall back to that same broken truncation for any predicate the
-        model predicts that wasn't seen during training -- exactly the
-        generalization case this pipeline is meant to handle. Instead, a
-        path-operator character only ends the label when what follows it
-        is itself another prefixed predicate reference (genuine SPARQL
-        path composition always re-prefixes each atom); otherwise it's
-        treated as label content, seen or unseen alike.
         """
-        entities = []
-        for m in _ENTITY_ANCHOR_RE.finditer(prediction):
-            label = _consume_entity_label(prediction, m.end())
-            if label:
-                entities.append(label)
-
-        predicates = []
-        for m in _PREDICATE_ANCHOR_RE.finditer(prediction):
-            label = _consume_predicate_label(prediction, m.end())
-            if label:
-                predicates.append(label)
-
+        entities = [e.rstrip(");.") for e in _PRED_ENTITY_RE.findall(prediction)]
+        predicates = [p.rstrip(");.") for p in _PRED_PREDICATE_RE.findall(prediction)]
         return list(dict.fromkeys(entities)), list(dict.fromkeys(predicates))
 
     # -- substitute ------------------------------------------------------------------------

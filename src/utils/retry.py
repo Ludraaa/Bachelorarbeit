@@ -1,9 +1,3 @@
-"""
-src/utils/retry.py
-
-Generic exponential backoff retry decorator and helper.
-"""
-
 import time
 import logging
 from functools import wraps
@@ -43,12 +37,6 @@ def with_retry(
         return wrapper
     return decorator
 
-
-def _has_on_fail(val):
-    """Distinguish on_fail=None (not set) from on_fail=None (explicit None return)."""
-    return True
-
-
 def call_with_retry(
     fn,
     *args,
@@ -59,20 +47,6 @@ def call_with_retry(
     on_fail=None,
     **kwargs,
 ):
-    """
-    Functional version — call fn(*args, **kwargs) with retry, no decoration needed.
-    Useful for one-off calls or lambdas.
-
-    Returns on_fail value if all attempts fail.
-
-    Usage:
-        result = call_with_retry(
-            requests.get, url,
-            retries=3, base_delay=1.0,
-            exceptions=(requests.Timeout,),
-            on_fail=None,
-        )
-    """
     delay = base_delay
 
     for attempt in range(retries + 1):

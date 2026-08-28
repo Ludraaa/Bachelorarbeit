@@ -107,12 +107,13 @@ def fix_sparql_for_jena(sparql: str, COMMON_PREFIXES) -> str:
         result = []
         in_string = False
         quote = None
+        in_iri = False
         i = 0
 
         while i < len(s):
             c = s[i]
 
-            if c in ('"', "'"):
+            if not in_iri and c in ('"', "'"):
                 if not in_string:
                     in_string = True
                     quote = c
@@ -122,7 +123,19 @@ def fix_sparql_for_jena(sparql: str, COMMON_PREFIXES) -> str:
                 i += 1
                 continue
 
-            if not in_string and c == "#":
+            if not in_string and c == "<":
+                in_iri = True
+                result.append(c)
+                i += 1
+                continue
+
+            if in_iri and c == ">":
+                in_iri = False
+                result.append(c)
+                i += 1
+                continue
+
+            if not in_string and not in_iri and c == "#":
                 while i < len(s) and s[i] != "\n":
                     i += 1
                 continue

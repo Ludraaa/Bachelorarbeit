@@ -59,36 +59,41 @@ echo "=========================================="
 #python src/temp/adapt_chatkbqa_pred.py --dataset ../OriginalChatKBQA/data/CWQ/generation/merged/CWQ_test.json --preds ../OriginalChatKBQA/Reading/LLaMA-13b/CWQ_Freebase_NQ_lora_epoch10/evaluation_beam/generated_predictions.jsonl --output data/temp.json --kb freebase --type-map ../OriginalChatKBQA/data/CWQ/generation/label_maps/CWQ_train_type_label_map.json
 # result comparison
 #python src/temp/compare_results.py \
-#    ../OriginalChatKBQA/Reading/LLaMA2-7b/WebQSP_Freebase_NQ_lora_epoch100/evaluation_beam/beam_test_top_k_predictions.json_gen_sexpr_results_official_format.json_new.json \
-#    data/WebQSP/predictions/ChatKBQA/evaluated/ChatKBQA.type_map+ChatKBQA.facc1+ChatKBQA.simple+ChatKBQA.neighborhood/WebQSP_test.chatkbqa_webqsp.json --a_better_only
+#    data/WebQSP/predictions/Llama-2-7b_WebQSP-sparql/evaluated/ChatKBQA.type_map+ChatKBQA.facc1+ChatKBQA.simple+ChatKBQA.neighborhood/WebQSP_test.sparql.json \
+#    data/WQSP_qlever/predictions/Qwen25-7b_WQSP_qlever-sparql/evaluated/ChatKBQA.type_map+ChatKBQA.facc1+ChatKBQA.simple+ChatKBQA.neighborhood/WQSP_qlever_test.sparql.json --by question --a_better_only
+#python src/temp/training_data_check.py --input data/WQSP_qlever/generation/merged/WQSP_qlever_test.sparql.json --kb freebase --endpoint http://tagus:7002/sparql
 
-#python src/sparql_to_sexpr.py --dataset CWQ --mode sparql --kb freebase --config configs/datasets/CWQ.yaml
 
-#python src/insert_labels.py --dataset CWQ --split train --kb freebase --debug
 
-#python src/prepare_llm_data.py --dataset CWQ --split train
+#python src/sparql_to_sexpr.py --dataset CWQ_qlever --mode sparql --kb freebase --config configs/datasets/CWQ.yaml
 
-#lmf train configs/training/cwq_chatkbqa.yaml
+#python src/insert_labels.py --dataset CWQ_qlever --split test --kb freebase --debug
 
-#python src/generate_predictions.py --config configs/infer/infer.yaml --dataset CWQ --split test --mode sparql --kb freebase --num_beams 8 #--max_samples 15
+#python src/prepare_llm_data.py --dataset CWQ_qlever --split train
+
+#lmf train configs/training/wqsp_chatkbqa.yaml
+
+#python src/generate_predictions.py --config configs/infer/llama.yaml --dataset CWQ --split test --mode sparql --kb freebase --diversity_penalty 1.0 --num_beams 8 #--max_samples 15
 
 
 python src/resolve_predictions.py \
-    --dataset WebQSP --split test --mode jena \
-    --model_id Llama-2-7b_WebQSP-jena \
+    --dataset CWQ --split test --mode sparql \
+    --model_id Llama-2-13b_CWQ-sparql \
     --entity_linkers ChatKBQA.type_map,ChatKBQA.facc1 \
     --predicate_linkers ChatKBQA.simple,ChatKBQA.neighborhood \
     --kb freebase \
-    --k1_per_pass 500,50 \
-    --k2_per_pass 1,4000 \
+    --k1_per_pass 500,30 \
+    --k2_per_pass 1,300 \
     --linker_params '{}' \
     --debug \
-    --note "no label fallback" #\
-    #--max_samples 5
+    --note "official run" \
+    --beam_limits 8
+#    #--item_time_limit_sec 1800
+#    #--max_samples 50
 
 python src/eval_predictions.py \
-    --dataset WebQSP --split test --mode jena \
-    --model_id Llama-2-7b_WebQSP-jena \
+    --dataset CWQ --split test --mode sparql \
+    --model_id Llama-2-13b_CWQ-sparql \
     --entity_linkers ChatKBQA.type_map,ChatKBQA.facc1 \
     --predicate_linkers ChatKBQA.simple,ChatKBQA.neighborhood \
     --get-live-gold

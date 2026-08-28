@@ -1,7 +1,5 @@
 ### Model
-#model_name_or_path: LLMs/Models/llama-2-13b/
 model_name_or_path: LLMs/Models/Qwen25-7b-hf/
-
 
 ### Method
 stage: sft
@@ -12,14 +10,14 @@ finetuning_type: lora
 lora_target: q_proj,v_proj
 
 ### Dataset
-dataset: CWQ_train.sparql 
+dataset: WWQ_train.sparql
+eval_dataset: WWQ_dev.sparql
 dataset_dir: LLMs/data
 template: qwen
 overwrite_cache: true
 
 ### Output
-#output_dir: LLMs/MyModels/Llama-2-13b_CWQ-jena/
-output_dir: LLMs/MyModels/Qwen25-7b_CWQ-sparql/
+output_dir: LLMs/MyModels/Qwen25-7b_WWQ-sparql/
 logging_steps: 10
 save_steps: 1000
 plot_loss: true
@@ -28,7 +26,14 @@ overwrite_output_dir: true
 ### Training
 per_device_train_batch_size: 4
 gradient_accumulation_steps: 4
-learning_rate: 5e-5
-num_train_epochs: 10.0
+learning_rate: 5e-6
+num_train_epochs: 100.0
 lr_scheduler_type: cosine
 fp16: true
+
+### Evaluation
+eval_strategy: steps
+eval_steps: 1000
+load_best_model_at_end: true
+metric_for_best_model: eval_loss
+greater_is_better: false

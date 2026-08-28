@@ -15,7 +15,7 @@ export JENA_HOME=ApacheJena/apache-jena-6.0.0/
 # SPARQL Endpoint
 #export ENDPOINT_URL=https://qlever.dev/api/wikidata
 #export ENDPOINT_URL="https://query.wikidata.org/sparql"
-#export ENDPOINT_URL="http://tagus:7001/sparql" #wikidata
+#export ENDPOINT_URL="http://amur:7001/sparql" #wikidata
 #export ENDPOINT_URL="http://tagus:7002/sparql" #freebase
 export ENDPOINT_URL="http://localhost:3001/sparql"
 

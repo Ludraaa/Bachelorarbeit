@@ -1,5 +1,6 @@
 import importlib
 from src.linkers.base import BaseEntityLinker, BasePredicateLinker, BaseExtractor
+from src.utils.kb import load_kb_module
 
 
 def load_entity_linker(name: str, **overrides) -> BaseEntityLinker:
@@ -84,31 +85,33 @@ def load_predicate_linker(name: str, **overrides) -> BasePredicateLinker:
 
 def load_extractor(kb: str):
     """
-    Returns the extract_from_prediction function for the given KB.
+    Returns the extract_from_prediction bound method for the given KB.
+    Loading/instantiation is delegated to src.utils.kb.load_kb_module so
+    there's a single place that knows how to find and construct a KB class.
     """
-    try:
-        module = importlib.import_module(f"src.kb.{kb}")
-    except ModuleNotFoundError:
-        raise ValueError(
-            f"KB module '{kb}' not found. "
-            f"Expected file: src/kb/{kb}.py"
-        )
+    instance = load_kb_module(kb)
 
-    if not hasattr(module, "extract_from_prediction"):
+    if not hasattr(instance, "extract_from_prediction"):
         raise AttributeError(
-            f"src/kb/{kb}.py must define extract_from_prediction(prediction: str)"
+            f"src/kb/{kb}.py's {type(instance).__name__} must implement "
+            f"extract_from_prediction(prediction: str)"
         )
 
-    return module.extract_from_prediction
+    return instance.extract_from_prediction
 
 
 def load_substitute(kb: str):
-    try:
-        module = importlib.import_module(f"src.kb.{kb}")
-    except ModuleNotFoundError:
-        raise ValueError(f"KB module '{kb}' not found. Expected: src/kb/{kb}.py")
+    """
+    Returns the substitute bound method for the given KB.
+    Loading/instantiation is delegated to src.utils.kb.load_kb_module so
+    there's a single place that knows how to find and construct a KB class.
+    """
+    instance = load_kb_module(kb)
 
-    if not hasattr(module, "substitute"):
-        raise AttributeError(f"src/kb/{kb}.py must define substitute(prediction, entity_map, predicate_map)")
+    if not hasattr(instance, "substitute"):
+        raise AttributeError(
+            f"src/kb/{kb}.py's {type(instance).__name__} must implement "
+            f"substitute(prediction, entity_map, predicate_map)"
+        )
 
-    return module.substitute
+    return instance.substitute

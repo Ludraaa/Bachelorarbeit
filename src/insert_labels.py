@@ -30,6 +30,99 @@ def debug(*args, **kwargs):
 
 
 # ---------------------------------------------------------------------------
+# failure tracking
+
+_label_failures: dict[str, dict] = {}  # URI -> failure info
+_relation_failures: dict[str, dict] = {}
+
+
+def log_label_failure(uri: str, reason: str, details: str = ""):
+    """Track label resolution failures for final reporting."""
+    if uri not in _label_failures:
+        _label_failures[uri] = {
+            "reason": reason,
+            "details": details,
+            "count": 1,
+            "examples": []
+        }
+    else:
+        _label_failures[uri]["count"] += 1
+
+
+def log_relation_failure(uri: str, reason: str, details: str = ""):
+    """Track relation label resolution failures for final reporting."""
+    if uri not in _relation_failures:
+        _relation_failures[uri] = {
+            "reason": reason,
+            "details": details,
+            "count": 1,
+            "examples": []
+        }
+    else:
+        _relation_failures[uri]["count"] += 1
+
+
+def print_failure_report():
+    """Print detailed failure report at the end."""
+    if not _debug:
+        return
+    
+    print("\n" + "="*80)
+    print("LABEL RESOLUTION FAILURE REPORT")
+    print("="*80)
+    
+    # Entity failures
+    print(f"\n--- Entity Label Failures ({len(_label_failures)} unique URIs) ---")
+    if not _label_failures:
+        print("  None - all entities resolved successfully!")
+    else:
+        # Group by reason
+        by_reason: dict[str, list] = {}
+        for uri, info in _label_failures.items():
+            by_reason.setdefault(info["reason"], []).append((uri, info))
+        
+        for reason, items in sorted(by_reason.items(), key=lambda x: -len(x[1])):
+            print(f"\n  Reason: {reason} ({len(items)} URIs)")
+            # Show top 10 examples
+            for uri, info in sorted(items, key=lambda x: -x[1]["count"])[:10]:
+                print(f"    - {uri} (occurred {info['count']} times)")
+                if info["details"]:
+                    print(f"      Details: {info['details']}")
+                if info["examples"]:
+                    example_ids = info["examples"][:5]
+                    print(f"      Example entries: {', '.join(example_ids)}")
+    
+    # Relation failures
+    print(f"\n--- Relation Label Failures ({len(_relation_failures)} unique URIs) ---")
+    if not _relation_failures:
+        print("  None - all relations resolved successfully!")
+    else:
+        by_reason = {}
+        for uri, info in _relation_failures.items():
+            by_reason.setdefault(info["reason"], []).append((uri, info))
+        
+        for reason, items in sorted(by_reason.items(), key=lambda x: -len(x[1])):
+            print(f"\n  Reason: {reason} ({len(items)} URIs)")
+            for uri, info in sorted(items, key=lambda x: -x[1]["count"])[:10]:
+                print(f"    - {uri} (occurred {info['count']} times)")
+                if info["details"]:
+                    print(f"      Details: {info['details']}")
+                if info["examples"]:
+                    example_ids = info["examples"][:5]
+                    print(f"      Example entries: {', '.join(example_ids)}")
+    
+    print("\n" + "="*80)
+
+
+# ---------------------------------------------------------------------------
+# endpoint resolution
+
+
+def resolve_endpoint(kb) -> str:
+    return getattr(kb, "LABEL_ENDPOINT_URL", None) or ENDPOINT_URL
+
+
+# ---------------------------------------------------------------------------
 # file stuff
 
 def get_paths(dataset: str, split: str) -> dict[str, dict]:
@@ -72,54 +165,70 @@ def save_cache(cache: dict, path: Path) -> None:
 # labels
 
 
-def fetch_labels(uris: list[str], cache: dict, kb) -> dict:
+def fetch_labels_with_tracking(uris: list[str], cache: dict, kb) -> dict:
+    """Enhanced fetch_labels with failure tracking."""
     uri_map: dict[str, list[str]] = {}
-
+    
     n_cached = 0
     n_null = 0
     n_queued = 0
-
+    
     for uri in uris:
         if uri in cache:
-            n_cached += 1
+            if cache[uri] is not None:
+                n_cached += 1
+            else:
+                n_null += 1
+                # Track cached failures
+                if "/entity/Q" in uri or "/entity/P" in uri:
+                    log_label_failure(uri, "cached_null", "Previously cached as no-label")
+                elif "/prop/" in uri:
+                    log_relation_failure(uri, "cached_null", "Previously cached as no-label")
             continue
-
+        
         norm = kb.normalize(uri)
-
+        
         if norm is None:
             cache[uri] = None
             n_null += 1
+            # Track normalize failures
+            if "/entity/Q" in uri or "/entity/P" in uri:
+                log_label_failure(uri, "normalize_failed", f"kb.normalize('{uri}') returned None")
+            elif "/prop/" in uri:
+                log_relation_failure(uri, "normalize_failed", f"kb.normalize('{uri}') returned None")
             debug(f"  normalize -> None (skipping SPARQL): {uri}")
             continue
-
+        
         uri_map.setdefault(norm, []).append(uri)
         n_queued += 1
-
-    debug(f"fetch_labels: {n_cached} already cached, {n_null} normalized to None, "
+    
+    debug(f"fetch_labels: {n_cached} already cached with labels, {n_null} no-label, "
           f"{n_queued} queued for SPARQL")
-
+    
     missing = list(uri_map)
     if not missing:
         debug("  nothing to fetch")
         return cache
-
+    
+    endpoint = resolve_endpoint(kb)
+    
     total_batches = (len(missing) + BATCH_SIZE - 1) // BATCH_SIZE
     print(f"  fetching {len(missing)} URIs in {total_batches} batch(es)")
-    debug(f"  endpoint: {ENDPOINT_URL}")
-
+    debug(f"  endpoint: {endpoint}")
+    
     for i in range(0, len(missing), BATCH_SIZE):
         batch = missing[i : i + BATCH_SIZE]
         batch_id = i // BATCH_SIZE + 1
-
+        
         values = " ".join(f"<{u}>" for u in batch)
         query = kb.LABEL_QUERY.format(values=values, language=kb.LANGUAGE)
-
+        
         debug(f"  batch {batch_id}/{total_batches}: {len(batch)} URIs")
-
+        
         try:
             resp = call_with_retry(
                 requests.post,
-                ENDPOINT_URL,
+                endpoint,
                 data={"query": query},
                 headers=_SPARQL_HEADERS,
                 retries=5,
@@ -127,26 +236,42 @@ def fetch_labels(uris: list[str], cache: dict, kb) -> dict:
                 backoff=2.0,
                 exceptions=(requests.RequestException,),
             )
-
+            
             payload = resp.json()
             bindings = payload["results"]["bindings"]
             found = kb.parse_label_results(bindings)
-
+            
             for norm_uri, label in found.items():
                 for orig in uri_map.get(norm_uri, [norm_uri]):
                     cache[orig] = label
-
+            
             missed = [norm for norm in batch if norm not in found]
             for norm in missed:
                 for orig in uri_map.get(norm, []):
                     cache[orig] = None
-
+                    # Track SPARQL misses
+                    if "/entity/Q" in orig or "/entity/P" in orig:
+                        log_label_failure(orig, "sparql_no_label", 
+                                        f"SPARQL returned no label for normalized URI {norm}")
+                    elif "/prop/" in orig:
+                        log_relation_failure(orig, "sparql_no_label", 
+                                           f"SPARQL returned no label for normalized URI {norm}")
+        
         except Exception as e:
             print(f"  batch {batch_id}/{total_batches} failed: {e}")
+            # Track batch failures
+            for norm in batch:
+                for orig in uri_map.get(norm, []):
+                    cache[orig] = None
+                    if "/entity/Q" in orig or "/entity/P" in orig:
+                        log_label_failure(orig, "sparql_error", f"Batch failed: {e}")
+                    elif "/prop/" in orig:
+                        log_relation_failure(orig, "sparql_error", f"Batch failed: {e}")
+            
             if _debug:
                 import traceback
                 traceback.print_exc()
-
+    
     return cache
 
 
@@ -165,9 +290,12 @@ def fetch_types(uris: list[str], types_cache: dict[str, bool], kb) -> dict[str, 
     if not missing:
         return types_cache
 
+    endpoint = resolve_endpoint(kb)
+
     total_batches = (len(missing) + BATCH_SIZE - 1) // BATCH_SIZE
     print(f"  fetching type membership for {len(missing)} URIs "
           f"in {total_batches} batch(es)")
+    debug(f"  endpoint: {endpoint}")
 
     for i in range(0, len(missing), BATCH_SIZE):
         batch = missing[i : i + BATCH_SIZE]
@@ -181,7 +309,7 @@ def fetch_types(uris: list[str], types_cache: dict[str, bool], kb) -> dict[str, 
         try:
             resp = call_with_retry(
                 requests.post,
-                ENDPOINT_URL,
+                endpoint,
                 data={"query": query},
                 headers=_SPARQL_HEADERS,
                 retries=5,
@@ -209,13 +337,37 @@ def fetch_types(uris: list[str], types_cache: dict[str, bool], kb) -> dict[str, 
     return types_cache
 
 
-def apply_labels(sexpr: str, cache: dict, kb) -> str:
+def apply_labels_with_tracking(sexpr: str, cache: dict, kb, entry_id: str = "") -> str:
+    """Enhanced version of apply_labels that tracks failures."""
     formatter = getattr(kb, "format_label", None)
 
     def repl(match: re.Match) -> str:
         uri = match.group(1)
         label = cache.get(uri)
 
+        # Track failures
+        if label is None:
+            # Check why it failed
+            if uri not in cache:
+                reason = "not_in_cache"
+                details = "URI was never fetched from SPARQL"
+            else:
+                reason = "null_label"
+                details = "SPARQL returned no label (normalize returned None or no label found)"
+            
+            if "/entity/Q" in uri or "/entity/P" in uri:
+                log_label_failure(uri, reason, details)
+                if entry_id and entry_id not in _label_failures.get(uri, {}).get("examples", []):
+                    _label_failures.setdefault(uri, {}).setdefault("examples", []).append(entry_id)
+            elif "/prop/" in uri:
+                log_relation_failure(uri, reason, details)
+                if entry_id and entry_id not in _relation_failures.get(uri, {}).get("examples", []):
+                    _relation_failures.setdefault(uri, {}).setdefault("examples", []).append(entry_id)
+            
+            debug(f"  apply_labels: {uri} -> NO LABEL ({reason})")
+            return match.group(0)
+
+        # Success case
         debug(f"  apply_labels: {uri} -> label={label!r}")
 
         if formatter:
@@ -266,7 +418,7 @@ def action_merge_all(
     debug(f"  sample URIs from sexprs: {sorted(all_uris)[:5]}")
 
     if missing_labels:
-        fetch_labels(list(all_uris), cache, kb)
+        fetch_labels_with_tracking(list(all_uris), cache, kb)
         save_cache(cache, paths["label_cache"])
 
         n_resolved = sum(1 for u in all_uris if cache.get(u))
@@ -335,9 +487,19 @@ def action_merge_all(
             if unresolved_ents or unresolved_rels:
                 debug(f"    unresolved entities: {unresolved_ents}")
                 debug(f"    unresolved relations: {unresolved_rels}")
+                # Add example context to failure tracking
+                entry_id = entry.get("id", "?")
+                for u in unresolved_ents:
+                    if u in _label_failures:
+                        if entry_id not in _label_failures[u]["examples"]:
+                            _label_failures[u]["examples"].append(entry_id)
+                for u in unresolved_rels:
+                    if u in _relation_failures:
+                        if entry_id not in _relation_failures[u]["examples"]:
+                            _relation_failures[u]["examples"].append(entry_id)
 
         record.update({
-            "sexpr_with_labels": apply_labels(sexpr, cache, kb),
+            "sexpr_with_labels": apply_labels_with_tracking(sexpr, cache, kb, entry.get("id", "")),
             "gold_entity_map": ent_map,
             "gold_relation_map": rel_map,
         })
@@ -380,13 +542,14 @@ def main():
 
     _debug = args.debug
 
-    debug(f"ENDPOINT_URL = {ENDPOINT_URL}")
-    debug(f"BATCH_SIZE   = {BATCH_SIZE}")
+    debug(f"ENDPOINT_URL (default) = {ENDPOINT_URL}")
+    debug(f"BATCH_SIZE             = {BATCH_SIZE}")
 
     print(f"loading KB: {args.kb}")
     kb = load_kb_module(args.kb)
 
     debug(f"KB LANGUAGE    = {getattr(kb, 'LANGUAGE', '(not set)')}")
+    debug(f"KB ENDPOINT_URL = {resolve_endpoint(kb)}")
     debug(f"KB LABEL_QUERY =\n{getattr(kb, 'LABEL_QUERY', '(not set)')}")
 
     paths_by_mode = get_paths(args.dataset, args.split)
@@ -449,6 +612,10 @@ def main():
               f"({len(global_type_map)} entries) -> {type_map_path}")
 
     print("\ndone")
+    
+    # Print failure report if in debug mode
+    if _debug:
+        print_failure_report()
 
 
 if __name__ == "__main__":

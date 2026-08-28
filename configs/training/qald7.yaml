@@ -1,0 +1,44 @@
+### Model
+model_name_or_path: LLMs/Models/Qwen25-7b-hf/
+
+### Method
+stage: sft
+do_train: true
+finetuning_type: lora
+
+### LoRA config - target more layers for better SPARQL learning
+lora_target: all  # or at least: q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj
+lora_rank: 64  # increased from default 8 for better capacity
+lora_alpha: 128
+lora_dropout: 0.05
+
+### Dataset
+dataset: Qald7_train.sparql
+dataset_dir: LLMs/data
+template: qwen
+overwrite_cache: true
+cutoff_len: 2048  # ensure enough for SPARQL + context
+val_size: 0.1  # use some for validation if possible
+
+### Output
+output_dir: LLMs/MyModels/Qwen25-7b_Qald7-sparql/
+logging_steps: 5
+save_steps: 20  # save more frequently for early stopping
+plot_loss: true
+overwrite_output_dir: true
+save_total_limit: 3
+
+### Training - critical changes for small dataset
+per_device_train_batch_size: 2  # reduced to allow more steps
+gradient_accumulation_steps: 8  # increased to maintain effective batch size
+learning_rate: 2e-5  # increased for faster adaptation on tiny dataset
+num_train_epochs: 1000.0  # more epochs
+lr_scheduler_type: cosine
+warmup_ratio: 0.1  # added warmup
+fp16: true
+weight_decay: 0.01  # added to prevent overfitting
+max_grad_norm: 1.0  # gradient clipping
+
+### Data augmentation strategy - REPEAT the dataset
+# You'll need to repeat your dataset 10-20 times in code
+# or use dataset: Qald7_train.sparql,Qald7_train.sparql,Qald7_train.sparql (repeat 10x)

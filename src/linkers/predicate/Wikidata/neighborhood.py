@@ -1,8 +1,8 @@
 import os
-import re
 import time
-import requests
 from collections import OrderedDict
+
+import requests
 from sentence_transformers import SentenceTransformer, util
 
 from src.linkers.base import BasePredicateLinker, LinkingInput, LinkingOutput
@@ -21,10 +21,12 @@ HEADERS = {
 
 PREFIXES = """PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX ns:   <http://rdf.freebase.com/ns/>
+PREFIX wd:   <http://www.wikidata.org/entity/>
+PREFIX wdt:  <http://www.wikidata.org/prop/direct/>
 """
 
-_FB_NS = "http://rdf.freebase.com/ns/"
+_WD_NS  = "http://www.wikidata.org/entity/"
+_WDT_NS = "http://www.wikidata.org/prop/direct/"
 
 
 class BoundedCache(OrderedDict):
@@ -41,11 +43,38 @@ class BoundedCache(OrderedDict):
 
 class Linker(BasePredicateLinker):
     """
-    Freebase predicate linker replicating the ChatKBQA 2-hop neighbourhood
-    expansion fallback (try_relation in the original codebase).
+    Wikidata predicate linker replicating the ChatKBQA 2-hop neighbourhood
+    expansion fallback (try_relation in the original codebase), ported
+    from the Freebase neighborhood linker.
 
-    QLever performs only cheap structural filters. The original string-based
-    predicate filters are applied locally in Python after retrieval.
+    Two things differ from the Freebase version, both structural rather
+    than cosmetic:
+
+    1. Relation identity. Freebase relations (domain.type.property) are
+       both the identifier AND rough natural-language text, so the
+       Freebase version scores raw relation-URI local names directly
+       against the extracted question labels. Wikidata PIDs (P17, P31,
+       ...) carry no lexical content -- scoring "P17" against "country"
+       would be meaningless. So candidate PIDs are additionally resolved
+       to their rdfs:label (fetched from the wd:Pxxx entity URI, per
+       Wikidata.normalize() in src/kb/wikidata.py -- the label does NOT
+       live on the wdt:Pxxx direct-claim URI used to traverse the graph)
+       before scoring, and results are mapped back to the PID afterwards.
+
+    2. Self-candidate seeding. The Freebase version additionally seeds the
+       candidate pool with the raw extracted labels themselves (in case
+       the model already predicted the correct dot-path relation
+       verbatim, so it's not lost when 2-hop expansion misses it). That
+       relies on Freebase relation names already being valid, meaningful
+       identifiers on their own. Wikidata's extracted labels are free-text
+       property guesses, not PIDs -- seeding them into the pool would let
+       raw English text end up in predicate_map, which substitute()
+       expects to contain a real PID. This step is dropped rather than
+       ported.
+
+    QLever/the target SPARQL endpoint performs only cheap structural
+    filters; the original string-based predicate filters are applied
+    locally in Python after retrieval, same as the Freebase version.
     """
 
     def __init__(
@@ -54,30 +83,36 @@ class Linker(BasePredicateLinker):
         te: float = 0.01,
         limit: int = 10000,
         timeout: int = 300,
-        mid_cache_size: int = 200,
+        language: str = "en",
+        entity_cache_size: int = 200,
         pool_cache_size: int = 500,
         score_cache_size: int = 500,
+        label_cache_size: int = 2000,
     ):
         self.ke = ke
         self.te = te
         self.limit = limit
         self.timeout = timeout
+        self.language = language
 
         self.model_name = "princeton-nlp/unsup-simcse-roberta-large"
         self.model = SentenceTransformer(self.model_name)
 
-        self._mid_cache: BoundedCache = BoundedCache(maxsize=mid_cache_size)
+        self._entity_cache: BoundedCache = BoundedCache(maxsize=entity_cache_size)
         self._pool_cache: BoundedCache = BoundedCache(maxsize=pool_cache_size)
         self._score_cache: BoundedCache = BoundedCache(maxsize=score_cache_size)
+        self._label_cache: BoundedCache = BoundedCache(maxsize=label_cache_size)
 
         self._stats = {
             "total_fetches": 0,
-            "mid_cache_hits": 0,
-            "mid_cache_misses": 0,
+            "entity_cache_hits": 0,
+            "entity_cache_misses": 0,
             "pool_cache_hits": 0,
             "pool_cache_misses": 0,
             "score_cache_hits": 0,
             "score_cache_misses": 0,
+            "label_cache_hits": 0,
+            "label_cache_misses": 0,
             "query_attempts": {"q1": 0, "q2": 0, "q3": 0, "q4": 0},
             "query_successes": {"q1": 0, "q2": 0, "q3": 0, "q4": 0},
             "query_failures": {"q1": 0, "q2": 0, "q3": 0, "q4": 0},
@@ -91,6 +126,7 @@ class Linker(BasePredicateLinker):
             "te": self.te,
             "limit": self.limit,
             "timeout": self.timeout,
+            "language": self.language,
             "model_name": self.model_name,
         }
 
@@ -100,42 +136,20 @@ class Linker(BasePredicateLinker):
     @staticmethod
     def _valid_relation(uri: str) -> bool:
         """
-        !REGEX(STR(?r), "wikipedia", "i")
-        !REGEX(STR(?r), "_id", "i")
-        !REGEX(STR(?r), "#type", "i")
-        !REGEX(STR(?r), "#label", "i")
-        !REGEX(STR(?r), "/ns/freebase", "i")
-        !REGEX(STR(?r), "ns/kg.")
-        !REGEX(STR(?r), "ns/dataworld.")
-        REGEX(STR(?r), "http://rdf.freebase.com/ns/")
+        Wikidata analogue of the Freebase string filters. Freebase's
+        domain.type.property relations are inherently "clean" once you
+        exclude a handful of noisy namespaces (wikipedia, _id, kg.,
+        dataworld.); the equivalent clean, single-hop, scoreable relation
+        on Wikidata is any direct-claim predicate (wdt:Pxxx). wdt:P31
+        ("instance of") is additionally dropped, mirroring how the
+        Freebase filter excludes type.object.type/instance -- both are
+        structural typing edges rather than content relations worth
+        scoring against a question.
         """
-
-        if not uri.startswith(_FB_NS):
+        if not uri.startswith(_WDT_NS):
             return False
-
-        lower_uri = uri.lower()
-
-        if "wikipedia" in lower_uri:
+        if uri == f"{_WDT_NS}P31":
             return False
-
-        if "_id" in lower_uri:
-            return False
-
-        if "#type" in lower_uri:
-            return False
-
-        if "#label" in lower_uri:
-            return False
-
-        if "/ns/freebase" in lower_uri:
-            return False
-
-        if re.search(r"ns/kg.", uri):
-            return False
-
-        if re.search(r"ns/dataworld.", uri):
-            return False
-
         return True
 
     @classmethod
@@ -150,6 +164,13 @@ class Linker(BasePredicateLinker):
 
     # ------------------------------------------------------------------
     # Query builders
+    #
+    # Same four 2-hop shapes as the Freebase version, unchanged structurally
+    # -- only the prefix/entity-var namespace differs. wdt:P31 is excluded
+    # at the SPARQL level too (in addition to the Python-side
+    # _valid_relation_pair filter) purely to keep result sets smaller,
+    # matching how the Freebase version excludes ns:type.object.type in
+    # the query itself.
 
     def _q1(self, ent: str) -> str:
         """
@@ -164,8 +185,8 @@ class Linker(BasePredicateLinker):
 
   FILTER (?r0 != rdf:type && ?r0 != rdfs:label)
   FILTER (?r1 != rdf:type && ?r1 != rdfs:label)
-  FILTER (?r0 != ns:type.object.type && ?r0 != ns:type.object.instance)
-  FILTER (?r1 != ns:type.object.type && ?r1 != ns:type.object.instance)
+  FILTER (?r0 != wdt:P31)
+  FILTER (?r1 != wdt:P31)
 }}
 LIMIT {self.limit}"""
 
@@ -184,8 +205,8 @@ LIMIT {self.limit}"""
 
   FILTER (?r0 != rdf:type && ?r0 != rdfs:label)
   FILTER (?r1 != rdf:type && ?r1 != rdfs:label)
-  FILTER (?r0 != ns:type.object.type && ?r0 != ns:type.object.instance)
-  FILTER (?r1 != ns:type.object.type && ?r1 != ns:type.object.instance)
+  FILTER (?r0 != wdt:P31)
+  FILTER (?r1 != wdt:P31)
 }}
 LIMIT {self.limit}"""
 
@@ -202,8 +223,8 @@ LIMIT {self.limit}"""
 
   FILTER (?r0 != rdf:type && ?r0 != rdfs:label)
   FILTER (?r1 != rdf:type && ?r1 != rdfs:label)
-  FILTER (?r0 != ns:type.object.type && ?r0 != ns:type.object.instance)
-  FILTER (?r1 != ns:type.object.type && ?r1 != ns:type.object.instance)
+  FILTER (?r0 != wdt:P31)
+  FILTER (?r1 != wdt:P31)
 }}
 LIMIT {self.limit}"""
 
@@ -222,8 +243,8 @@ LIMIT {self.limit}"""
 
   FILTER (?r0 != rdf:type && ?r0 != rdfs:label)
   FILTER (?r1 != rdf:type && ?r1 != rdfs:label)
-  FILTER (?r0 != ns:type.object.type && ?r0 != ns:type.object.instance)
-  FILTER (?r1 != ns:type.object.type && ?r1 != ns:type.object.instance)
+  FILTER (?r0 != wdt:P31)
+  FILTER (?r1 != wdt:P31)
 }}
 LIMIT {self.limit}"""
 
@@ -304,14 +325,14 @@ LIMIT {self.limit}"""
                         continue
 
                     r0 = (
-                        r0_uri[len(_FB_NS):]
-                        if r0_uri.startswith(_FB_NS)
+                        r0_uri[len(_WDT_NS):]
+                        if r0_uri.startswith(_WDT_NS)
                         else r0_uri
                     )
 
                     r1 = (
-                        r1_uri[len(_FB_NS):]
-                        if r1_uri.startswith(_FB_NS)
+                        r1_uri[len(_WDT_NS):]
+                        if r1_uri.startswith(_WDT_NS)
                         else r1_uri
                     )
 
@@ -336,27 +357,25 @@ LIMIT {self.limit}"""
         }
 
     # ------------------------------------------------------------------
-    # MID-level 2-hop fetch
+    # Entity-level 2-hop fetch
 
     def _fetch_2hop_relations(
         self,
         entity_id: str,
     ) -> tuple[set[str], dict]:
         """
-        Union of all relation local names reachable within 2 hops from
-        entity_id, collected via 4 separate queries.
-
-        Returns (relations, fetch_debug).
-
-        Results are cached by entity MID.
+        Union of all relation local names (PIDs) reachable within 2 hops
+        from entity_id (a bare QID, e.g. "Q76"), collected via 4 separate
+        queries. Returns (relations, fetch_debug). Results are cached by
+        entity QID.
         """
 
         self._stats["total_fetches"] += 1
 
-        if entity_id in self._mid_cache:
-            self._stats["mid_cache_hits"] += 1
+        if entity_id in self._entity_cache:
+            self._stats["entity_cache_hits"] += 1
 
-            cached = self._mid_cache[entity_id]
+            cached = self._entity_cache[entity_id]
 
             fetch_debug = {
                 "entity_id": entity_id,
@@ -367,9 +386,9 @@ LIMIT {self.limit}"""
 
             return cached["relations"], fetch_debug
 
-        self._stats["mid_cache_misses"] += 1
+        self._stats["entity_cache_misses"] += 1
 
-        ent = f"<{_FB_NS}{entity_id}>"
+        ent = f"<{_WD_NS}{entity_id}>"
 
         queries = [
             ("q1", self._q1(ent)),
@@ -421,7 +440,7 @@ LIMIT {self.limit}"""
 
             time.sleep(1)
 
-        self._mid_cache[entity_id] = {
+        self._entity_cache[entity_id] = {
             "relations": cumulative,
             "query_debug": query_debugs,
         }
@@ -436,16 +455,79 @@ LIMIT {self.limit}"""
         return cumulative, fetch_debug
 
     # ------------------------------------------------------------------
-    # Scoring
+    # PID -> label lookup (the step the Freebase version doesn't need)
 
+    def _fetch_relation_labels(self, pids: set[str]) -> dict[str, str]:
+        """
+        rdfs:label for a property lives on its wd:Pxxx entity URI, not on
+        the wdt:Pxxx direct-claim URI used to traverse the graph -- see
+        Wikidata.normalize() in src/kb/wikidata.py for the same mapping.
+        Falls back to the bare PID string (so scoring still runs, just
+        with no semantic signal) if no English label is found or the
+        request fails.
+        """
+        pids = set(pids)
+        uncached = [p for p in pids if p not in self._label_cache]
+
+        self._stats["label_cache_hits"] += len(pids) - len(uncached)
+        self._stats["label_cache_misses"] += len(uncached)
+
+        if uncached:
+            values = " ".join(f"<{_WD_NS}{p}>" for p in uncached)
+            query = PREFIXES + f"""SELECT ?p ?label WHERE {{
+  VALUES ?p {{ {values} }}
+  ?p rdfs:label ?label .
+  FILTER(LANG(?label) = "{self.language}")
+}}"""
+
+            def _do_request():
+                resp = requests.post(
+                    ENDPOINT,
+                    data={"query": query},
+                    headers=HEADERS,
+                    timeout=self.timeout,
+                    proxies={"http": None, "https": None},
+                )
+                resp.raise_for_status()
+                return resp
+
+            try:
+                resp = call_with_retry(
+                    _do_request,
+                    retries=3,
+                    base_delay=5.0,
+                    backoff=2.0,
+                    exceptions=(requests.RequestException,),
+                )
+                if resp is not None:
+                    bindings = resp.json()["results"]["bindings"]
+                    for row in bindings:
+                        pid = row["p"]["value"].rsplit("/", 1)[-1]
+                        label = row["label"]["value"]
+                        self._label_cache[pid] = label
+            except Exception:
+                pass  # uncached PIDs below fall back to their bare id
+
+        return {p: self._label_cache.get(p, p) for p in pids}
+
+    # ------------------------------------------------------------------
+    # Scoring
 
     def _score(
         self,
         labels: list[str],
-        cand_rels: list[str],
+        cand_ids: list[str],
+        cand_texts: list[str],
     ) -> dict[str, list[tuple[str, float]]]:
+        """
+        Same cosine-similarity top-k/threshold logic as the Freebase
+        version, except candidates are embedded on their fetched label
+        text (cand_texts) while the returned tuples reference the
+        underlying PID (cand_ids) -- substitute() downstream needs the
+        PID, not the label text.
+        """
 
-        if not labels or not cand_rels:
+        if not labels or not cand_ids:
             return {
                 label: []
                 for label in labels
@@ -459,7 +541,7 @@ LIMIT {self.limit}"""
         )
 
         emb_cands = self.model.encode(
-            cand_rels,
+            cand_texts,
             convert_to_tensor=True,
             normalize_embeddings=True,
             batch_size=64,
@@ -476,14 +558,14 @@ LIMIT {self.limit}"""
 
             scored = list(
                 zip(
-                    cand_rels,
+                    cand_ids,
                     sim_matrix[i].tolist(),
                 )
             )
 
             filtered = [
-                (rel, s)
-                for rel, s in scored
+                (pid, s)
+                for pid, s in scored
                 if s > self.te
             ]
 
@@ -523,47 +605,43 @@ LIMIT {self.limit}"""
 
             self._stats["pool_cache_hits"] += 1
 
-            cand_rels, pool_debug = self._pool_cache[pool_key]
+            cand_ids, pool_debug = self._pool_cache[pool_key]
 
             entity_fetch_debugs = pool_debug["entity_fetches"]
-            seeded_labels = pool_debug["pool_seeded_labels"]
 
         else:
 
             self._stats["pool_cache_misses"] += 1
 
-            cand_rels_set: set[str] = set()
+            cand_pids_set: set[str] = set()
             entity_fetch_debugs: dict = {}
 
             for entity_id in entity_map.values():
 
-                rels, fetch_debug = self._fetch_2hop_relations(
+                pids, fetch_debug = self._fetch_2hop_relations(
                     entity_id
                 )
 
-                cand_rels_set |= rels
+                cand_pids_set |= pids
 
                 entity_fetch_debugs[entity_id] = fetch_debug
 
-            seeded_labels = [
-                label
-                for label in inp.labels
-                if label not in cand_rels_set
-            ]
-
-            cand_rels_set |= set(inp.labels)
-
-            cand_rels = list(cand_rels_set)
+            cand_ids = list(cand_pids_set)
 
             pool_debug = {
                 "entity_fetches": entity_fetch_debugs,
-                "pool_seeded_labels": seeded_labels,
             }
 
             self._pool_cache[pool_key] = (
-                cand_rels,
+                cand_ids,
                 pool_debug,
             )
+
+        # --------------------------------------------------------------
+        # Label lookup for the candidate pool (Wikidata-only step)
+
+        label_lookup = self._fetch_relation_labels(set(cand_ids))
+        cand_texts = [label_lookup[pid] for pid in cand_ids]
 
         # --------------------------------------------------------------
         # Score cache
@@ -585,7 +663,8 @@ LIMIT {self.limit}"""
 
             scored_map = self._score(
                 inp.labels,
-                cand_rels,
+                cand_ids,
+                cand_texts,
             )
 
             score_duration = round(
@@ -602,13 +681,12 @@ LIMIT {self.limit}"""
         label_map: dict[str, str] = {}
         failed: list[str] = []
 
-        cand_rels_set_fast = set(cand_rels)
+        cand_ids_set_fast = set(cand_ids)
 
         debug: dict = {
-            "pool_size": len(cand_rels),
+            "pool_size": len(cand_ids),
             "pool_cache_hit": pool_cache_hit,
             "score_cache_hit": score_cache_hit,
-            "pool_seeded_labels": seeded_labels,
             "entity_map": entity_map,
             "entity_fetches": entity_fetch_debugs,
             "global_stats": self._stats,
@@ -617,7 +695,7 @@ LIMIT {self.limit}"""
             "per_label": {},
         }
 
-        if not cand_rels:
+        if not cand_ids:
 
             for label in inp.labels:
                 resolved[label] = []
@@ -645,10 +723,11 @@ LIMIT {self.limit}"""
             debug["per_label"][label] = {
                 "top_candidates": [
                     {
-                        "id": relation,
+                        "id": pid,
+                        "label": label_lookup.get(pid, pid),
                         "score": round(score, 6),
                     }
-                    for relation, score in top
+                    for pid, score in top
                 ],
                 "n_candidates": len(top),
                 "best_id": top[0][0] if top else None,
@@ -657,8 +736,7 @@ LIMIT {self.limit}"""
                     if top
                     else None
                 ),
-                "was_seeded": label in seeded_labels,
-                "in_pool": label in cand_rels_set_fast,
+                "in_pool": label in cand_ids_set_fast,
             }
 
             if top:

@@ -198,3 +198,11 @@ Freebase-Setup/virtuoso-opensource.tar.gz
 virtuoso-opensource/*
 job.log
 miniconda3/*
+job*.sh
+job*.log
+env2.sh
+env3.sh
+Freebase-Setup/virtuoso_db_corr/
+data2/
+data3/
+
