@@ -79,7 +79,7 @@ echo "=========================================="
 python src/resolve_predictions.py \
     --dataset CWQ --split test --mode sparql \
     --model_id Llama-2-13b_CWQ-sparql \
-    --entity_linkers ChatKBQA.type_map,ChatKBQA.facc1 \
+    --entity_linkers ChatKBQA.type_map,ChatKBQA.gold_exact,ChatKBQA.gold_simcse,ChatKBQA.facc1 \
     --predicate_linkers ChatKBQA.simple,ChatKBQA.neighborhood \
     --kb freebase \
     --k1_per_pass 500,30 \
@@ -94,7 +94,7 @@ python src/resolve_predictions.py \
 python src/eval_predictions.py \
     --dataset CWQ --split test --mode sparql \
     --model_id Llama-2-13b_CWQ-sparql \
-    --entity_linkers ChatKBQA.type_map,ChatKBQA.facc1 \
+    --entity_linkers ChatKBQA.type_map,ChatKBQA.gold_exact,ChatKBQA.gold_simcse,ChatKBQA.facc1 \
     --predicate_linkers ChatKBQA.simple,ChatKBQA.neighborhood \
     --get-live-gold
 

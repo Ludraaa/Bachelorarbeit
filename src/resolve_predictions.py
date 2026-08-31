@@ -25,8 +25,8 @@ from linkers import (
 from linkers.base import LinkingInput, LinkingOutput
 from sexpr.jena_interface import algebra_to_sparql
 from src.utils.retry import call_with_retry
-from src.legacy.lisp_to_sparql_chatkbqa import sexpr_to_sparql as chatkbqa_webqsp_sexpr_to_sparql
-from src.legacy.lisp_to_sparql_chatkbqa_cwq import sexpr_to_sparql as chatkbqa_cwq_sexpr_to_sparql
+from src.chatkbqa.lisp_to_sparql_chatkbqa import sexpr_to_sparql as chatkbqa_webqsp_sexpr_to_sparql
+from src.chatkbqa.lisp_to_sparql_chatkbqa_cwq import sexpr_to_sparql as chatkbqa_cwq_sexpr_to_sparql
 from src.utils.sparql_exec import _SPARQL_HEADERS
 from src.utils.kb import load_kb_module
 

@@ -1,10 +1,3 @@
-"""
-src/utils/sparql_exec.py
-
-Shared SPARQL execution and result-normalisation utilities used by both
-adapt_dataset.py  (gold answer hydration)
-eval_predictions.py (pred + gold answer execution).
-"""
 import re
 import requests
 
@@ -26,14 +19,12 @@ _SPARQL_HEADERS = {
 
 _FALLBACK_LOC_RE = re.compile(r"/([^/]+)$")
 
-# Replaced at runtime by init_uri_normaliser() once the KB module is loaded.
 _normalise_uri: callable = lambda uri: (
     m.group(1) if (m := _FALLBACK_LOC_RE.search(uri)) else uri
 )
 
 
 def init_uri_normaliser(kb_module) -> None:
-    """Bind _normalise_uri to the KB module's normalise_answer_uri if present."""
     global _normalise_uri
     fn = getattr(kb_module, "normalise_answer_uri", None)
     if callable(fn):
@@ -60,7 +51,6 @@ def normalise_gold_sparql(sparql: str, common_prefixes) -> tuple[str | None, str
 # SPARQL execution
 
 def _execute_sparql_raw(sparql: str, endpoint: str, timeout: int):
-    """Single attempt — raises on any HTTP or parse error."""
     resp = requests.post(
         endpoint,
         data={"query": sparql},
@@ -75,14 +65,6 @@ def _execute_sparql_raw(sparql: str, endpoint: str, timeout: int):
 
 
 def execute_sparql(sparql: str, endpoint: str, timeout: int = 30):
-    """
-    Execute a SPARQL query with exponential-backoff retries.
-
-    Returns:
-        bool          – for ASK queries
-        list[dict]    – binding rows for SELECT queries  (may be empty)
-        None          – on total failure after all retries
-    """
     return call_with_retry(
         _execute_sparql_raw,
         sparql,

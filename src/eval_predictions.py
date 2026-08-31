@@ -30,19 +30,14 @@ _DEFAULT_ENDPOINT = os.environ.get("ENDPOINT_URL", "https://query.wikidata.org/s
 _DATA_DIR = os.environ.get("DATA_DIR", "data")
 _DEFAULT_LEDGER = "results/results.json"
 
-# F1 budgets for the hyperparameter-sensitivity analysis, expressed as
-# absolute points on the 0-1 assignment_f1 scale (0.01% -> 0.0001, etc).
+# F1 budgets for the hyperparameter-sensitivity analysis
 _F1_BUDGETS = {
     "0.01pct": 0.0001,
     "0.1pct":  0.001,
     "1pct":    0.01,
 }
 
-# Caps (beam_limit, k1, k2) are never allowed to drop below this. A cap of 0
-# is ambiguous (it would mean "keep nothing", but for beam_limit specifically
-# downstream code used 0 to mean "unlimited") so we floor every cap at 1,
-# meaning at minimum the single best (rank/perm-idx 0) candidate is always
-# kept.
+# Caps (beam_limit, k1, k2) are never allowed to drop below this
 _MIN_CAP = 1
 
 plt.rcParams.update({
@@ -88,7 +83,7 @@ def parse_args():
                         help="Free-text note stored in the ledger entry for this run.")
 
     parser.add_argument("--max_samples", type=int, default=None,
-                        help="Cap number of items evaluated (useful for debugging).")
+                        help="Cap number of items evaluated (debug).")
 
     parser.add_argument("--skip_analysis", action="store_true", default=False,
                         help="Skip the distribution/hyperparameter-sensitivity analysis and plots.")
@@ -100,13 +95,11 @@ def parse_args():
 # Path helpers
 
 def resolved_path(data_dir, dataset, model_id, entity_linkers, predicate_linkers, split, mode):
-    return (Path(data_dir) / dataset / "predictions" / model_id / "resolved"
-            / f"{'+'.join(entity_linkers.split(','))}+{'+'.join(predicate_linkers.split(','))}" / f"{dataset}_{split}.{mode}.json")
+    return (Path(data_dir) / dataset / "predictions" / model_id / "resolved" / f"{'+'.join(entity_linkers.split(','))}+{'+'.join(predicate_linkers.split(','))}" / f"{dataset}_{split}.{mode}.json")
 
 
 def evaluated_path(data_dir, dataset, model_id, entity_linkers, predicate_linkers, split, mode):
-    return (Path(data_dir) / dataset / "predictions" / model_id / "evaluated"
-            / f"{'+'.join(entity_linkers.split(','))}+{'+'.join(predicate_linkers.split(','))}" / f"{dataset}_{split}.{mode}.json")
+    return (Path(data_dir) / dataset / "predictions" / model_id / "evaluated" / f"{'+'.join(entity_linkers.split(','))}+{'+'.join(predicate_linkers.split(','))}" / f"{dataset}_{split}.{mode}.json")
 
 
 def analysis_json_path(eval_out: Path) -> Path:
@@ -178,7 +171,7 @@ def score(pred: list[list[str]], gold: list[list[str]]):
 
 def get_gold_answers(item: dict, endpoint: str, timeout: int, get_live_gold: bool, common_prefixes) -> tuple[list[list[str]], str]: # answers, note
     raw_sparql = item.get("sparql", "")
-    saved      = ensure_rows(item.get("answer", []))
+    saved = ensure_rows(item.get("answer", []))
 
     if not get_live_gold or not raw_sparql:
         return saved, "saved"
@@ -249,12 +242,19 @@ def _float_stats(values: list[float]) -> dict:
     }
 
 
+def _winning_pass_bucket(it: dict) -> str:
+    """
+    Bucket label used for the winning-pass distribution overview.
+    """
+    if it.get("stale"):
+        return "_stale"
+    return it.get("winning_pass_linker") or "_unresolved"
+
+
 def build_distribution_analysis(evaluated_items: list[dict], predicate_linkers: list[str]) -> dict:
     n = len(evaluated_items)
 
-    winning_pass_counter = Counter(
-        it.get("winning_pass_linker") or "_unresolved" for it in evaluated_items
-    )
+    winning_pass_counter = Counter(_winning_pass_bucket(it) for it in evaluated_items)
     winning_pass = {
         lid: {"count": cnt, "pct": round(cnt / n * 100, 2) if n else 0.0}
         for lid, cnt in winning_pass_counter.items()
@@ -265,7 +265,10 @@ def build_distribution_analysis(evaluated_items: list[dict], predicate_linkers: 
     predicate_perm_by_pass = {}
 
     for lid in predicate_linkers:
-        items_for_pass = [it for it in evaluated_items if it.get("winning_pass_linker") == lid]
+        items_for_pass = [
+            it for it in evaluated_items
+            if not it.get("stale") and it.get("winning_pass_linker") == lid
+        ]
         beam_by_pass[lid] = _idx_stats(
             [it["executed_beam_rank"] for it in items_for_pass if it.get("executed_beam_rank") is not None]
         )
@@ -294,25 +297,26 @@ def _exec_status_breakdown(items_for_pass: list[dict]) -> dict:
 
 
 def build_per_linker_performance(evaluated_items: list[dict], predicate_linkers: list[str]) -> dict:
-    """Executability and answer-quality (EM / assignment_f1 / Hit@1) broken
-    down by which predicate-linker pass produced the winning query for each
-    item. This is the eval-time counterpart to the resolve-time
-    `runtime_by_resolution` breakdown already stored in the resolved-file
-    meta: runtime tells you how expensive a pass is, this tells you whether
-    it was actually worth it — a pass can be cheap but only ever contribute
-    low-quality answers, or expensive but responsible for most of the
-    correct ones. Items with no winning pass (unresolved) are reported
-    under "_unresolved" for comparison.
+    """
+    Executability and answer-quality broken down by which predicate-linker pass produced the winning query for each item.
     """
     n_total = len(evaluated_items)
-    pass_labels = list(predicate_linkers) + ["_unresolved"]
+    pass_labels = list(predicate_linkers) + ["_unresolved", "_stale"]
 
     out = {}
     for lid in pass_labels:
-        if lid == "_unresolved":
-            items_for_pass = [it for it in evaluated_items if not it.get("winning_pass_linker")]
+        if lid == "_stale":
+            items_for_pass = [it for it in evaluated_items if it.get("stale")]
+        elif lid == "_unresolved":
+            items_for_pass = [
+                it for it in evaluated_items
+                if not it.get("stale") and not it.get("winning_pass_linker")
+            ]
         else:
-            items_for_pass = [it for it in evaluated_items if it.get("winning_pass_linker") == lid]
+            items_for_pass = [
+                it for it in evaluated_items
+                if not it.get("stale") and it.get("winning_pass_linker") == lid
+            ]
 
         n = len(items_for_pass)
         if n == 0:
@@ -321,7 +325,7 @@ def build_per_linker_performance(evaluated_items: list[dict], predicate_linkers:
         n_executable = sum(1 for it in items_for_pass if it.get("executable"))
         n_ok = sum(1 for it in items_for_pass if it.get("exec_status") == "ok")
 
-        out[lid] = {
+        entry = {
             "count":               n,
             "pct_of_total":        round(n / n_total * 100, 2) if n_total else 0.0,
             "executable_count":    n_executable,
@@ -329,10 +333,16 @@ def build_per_linker_performance(evaluated_items: list[dict], predicate_linkers:
             "exec_ok_count":       n_ok,
             "exec_ok_pct":         round(n_ok / n * 100, 2),
             "exec_status_breakdown": _exec_status_breakdown(items_for_pass),
-            "exact_match_rate":    round(sum(it["exact_match"] for it in items_for_pass) / n, 4),
-            "hit1_rate":           round(sum(it["hit1"] for it in items_for_pass) / n, 4),
-            "assignment_f1":       _float_stats([it["assignment_f1"] for it in items_for_pass]),
         }
+
+        if lid != "_stale":
+            entry.update({
+                "exact_match_rate": round(sum(it["exact_match"] for it in items_for_pass) / n, 4),
+                "hit1_rate":        round(sum(it["hit1"] for it in items_for_pass) / n, 4),
+                "assignment_f1":    _float_stats([it["assignment_f1"] for it in items_for_pass]),
+            })
+
+        out[lid] = entry
     return out
 
 
@@ -390,10 +400,7 @@ def _param_sensitivity(items_for_pass: list[dict], idx_key: str, original_cap: f
 
 
 def _full_sensitivity_curve(items_for_pass: list[dict], idx_key: str, original_cap: float, n_total: int) -> dict:
-    """Cumulative F1 loss at every distinct cap value that actually occurs
-    in the data, not just the three budget-selected caps. Gives a full
-    step-function curve (for plotting) instead of 3 sparse points. Caps
-    never go below _MIN_CAP, matching _param_sensitivity."""
+    """Cumulative F1 loss at every distinct cap value"""
     groups = _grouped_losses(items_for_pass, idx_key)
     orig_cap = max(original_cap, _MIN_CAP)
 
@@ -436,7 +443,10 @@ def build_hyperparam_analysis(evaluated_items: list[dict], file_meta: dict, n_to
 
     out = {}
     for pass_idx, lid in enumerate(predicate_linkers):
-        items_for_pass = [it for it in evaluated_items if it.get("winning_pass_linker") == lid]
+        items_for_pass = [
+            it for it in evaluated_items
+            if not it.get("stale") and it.get("winning_pass_linker") == lid
+        ]
         if not items_for_pass:
             continue
 
@@ -509,10 +519,9 @@ def _hist_ax(ax, values: list[int], title: str, xlabel: str):
     max_v = max(values)
     bins = min(max_v + 2, 40)
     ax.hist(values, bins=bins, color="#4C72B0", edgecolor="white", linewidth=0.5)
-    ax.set_yscale("log")
     ax.set_title(title)
     ax.set_xlabel(xlabel)
-    ax.set_ylabel("# items (log scale)")
+    ax.set_ylabel("# items")
 
 
 def generate_plots(evaluated_items: list[dict], file_meta: dict, distributions: dict,
@@ -525,7 +534,15 @@ def generate_plots(evaluated_items: list[dict], file_meta: dict, distributions: 
     fig, ax = plt.subplots(figsize=(5, 3.5))
     labels = list(distributions["winning_pass"].keys())
     counts = [distributions["winning_pass"][l]["count"] for l in labels]
-    colors = ["#DD8452" if l == "_unresolved" else "#4C72B0" for l in labels]
+
+    def _bucket_color(l):
+        if l == "_unresolved":
+            return "#DD8452"
+        if l == "_stale":
+            return "#999999"
+        return "#4C72B0"
+
+    colors = [_bucket_color(l) for l in labels]
     ax.bar(labels, counts, color=colors)
     for i, c in enumerate(counts):
         ax.text(i, c, str(c), ha="center", va="bottom", fontsize=9)
@@ -540,7 +557,10 @@ def generate_plots(evaluated_items: list[dict], file_meta: dict, distributions: 
 
     # 2. Per-pass histograms: beam rank / entity perm idx / predicate perm idx
     for lid in predicate_linkers:
-        items_for_pass = [it for it in evaluated_items if it.get("winning_pass_linker") == lid]
+        items_for_pass = [
+            it for it in evaluated_items
+            if not it.get("stale") and it.get("winning_pass_linker") == lid
+        ]
         if not items_for_pass:
             continue
         fig, axes = plt.subplots(1, 3, figsize=(12, 3.5))
@@ -557,8 +577,7 @@ def generate_plots(evaluated_items: list[dict], file_meta: dict, distributions: 
         plt.close(fig)
         saved.append(path)
 
-    # 3. Full F1-vs-cap sensitivity curves per pass/param, with the three
-    #    budget picks annotated on top of the continuous curve.
+    # 3. Full F1-vs-cap sensitivity curves per pass/param
     for lid, data in hyperparam.items():
         fig, axes = plt.subplots(1, 3, figsize=(13, 3.8))
         param_specs = [
@@ -620,31 +639,34 @@ def generate_plots(evaluated_items: list[dict], file_meta: dict, distributions: 
 
 def generate_per_linker_plots(evaluated_items: list[dict], predicate_linkers: list[str],
                                per_linker_performance: dict, plots_dir: Path) -> list[Path]:
-    """Plots for build_per_linker_performance: answer quality broken down by
-    winning predicate-linker pass. Meant to sit next to the existing
-    runtime-by-pass numbers in the resolve-file meta so a pass's cost and
-    its actual payoff can be read side by side."""
+    """
+    Plots for build_per_linker_performance: answer quality broken down by winning predicate-linker pass
+    """
     plots_dir.mkdir(parents=True, exist_ok=True)
     saved: list[Path] = []
 
-    pass_labels = [l for l in list(predicate_linkers) + ["_unresolved"] if l in per_linker_performance]
-    if not pass_labels:
+    all_labels = [l for l in list(predicate_linkers) + ["_unresolved", "_stale"] if l in per_linker_performance]
+    if not all_labels:
         return saved
 
-    colors = ["#DD8452" if l == "_unresolved" else "#4C72B0" for l in pass_labels]
-    x = np.arange(len(pass_labels))
+    quality_labels = [l for l in all_labels if l != "_stale"]
+    if not quality_labels:
+        return saved
 
-    # 1. Answer quality per pass: EM / mean assignment F1 / Hit@1
+    colors = ["#DD8452" if l == "_unresolved" else "#4C72B0" for l in quality_labels]
+    x = np.arange(len(quality_labels))
+
+    # 1. Answer quality per pass
     fig, ax = plt.subplots(figsize=(6.5, 3.8))
     width = 0.25
-    em = [per_linker_performance[l]["exact_match_rate"] for l in pass_labels]
-    f1 = [per_linker_performance[l]["assignment_f1"]["mean"] for l in pass_labels]
-    h1 = [per_linker_performance[l]["hit1_rate"] for l in pass_labels]
+    em = [per_linker_performance[l]["exact_match_rate"] for l in quality_labels]
+    f1 = [per_linker_performance[l]["assignment_f1"]["mean"] for l in quality_labels]
+    h1 = [per_linker_performance[l]["hit1_rate"] for l in quality_labels]
     ax.bar(x - width, em, width, label="exact match", color="#4C72B0")
     ax.bar(x, f1, width, label="assignment F1 (mean)", color="#DD8452")
     ax.bar(x + width, h1, width, label="hit@1", color="#55A868")
-    ax.set_xticks(x, pass_labels)
-    plt.setp(ax.get_xticklabels(), rotation=20, ha="right")
+    ax.set_xticks(x)
+    ax.set_xticklabels(quality_labels, rotation=20, ha="right")
     ax.set_ylabel("score")
     ax.set_ylim(0, 1)
     ax.set_title("Answer quality by winning pass")
@@ -655,51 +677,23 @@ def generate_per_linker_plots(evaluated_items: list[dict], predicate_linkers: li
     plt.close(fig)
     saved.append(path)
 
-    # 2. Per-item F1 distribution per pass (boxplot) — shows spread, not just
-    #    the mean; a pass can have the same mean F1 as another but be far
-    #    more bimodal (mostly-right-or-totally-wrong vs. consistently-okay).
-    f1_by_pass = []
-    for l in pass_labels:
-        if l == "_unresolved":
-            items_for_pass = [it for it in evaluated_items if not it.get("winning_pass_linker")]
-        else:
-            items_for_pass = [it for it in evaluated_items if it.get("winning_pass_linker") == l]
-        f1_by_pass.append([it["assignment_f1"] for it in items_for_pass])
-
-    fig, ax = plt.subplots(figsize=(6, 3.8))
-    bp = ax.boxplot(f1_by_pass, labels=pass_labels, showmeans=True, patch_artist=True)
-    for patch, color in zip(bp["boxes"], colors):
-        patch.set_facecolor(color)
-        patch.set_alpha(0.6)
-    plt.setp(ax.get_xticklabels(), rotation=20, ha="right")
-    ax.set_ylabel("assignment F1")
-    ax.set_title("Per-item F1 distribution by winning pass")
-    path = plots_dir / "f1_distribution_by_pass.pdf"
-    fig.savefig(path)
-    fig.savefig(path.with_suffix(".png"))
-    plt.close(fig)
-    saved.append(path)
-
-    # 3. Share of total items vs. share of total F1 contributed, per pass.
-    #    Makes "worthwhileness" visible directly: a pass that eats a large
-    #    slice of the item pie but only a thin slice of the F1 pie is a
-    #    prime candidate for cutting/deprioritizing.
+    # 2. Share of total items vs. share of total F1 contributed per pass
     f1_sums = {
         l: per_linker_performance[l]["assignment_f1"]["mean"] * per_linker_performance[l]["count"]
-        for l in pass_labels
+        for l in quality_labels
     }
     total_f1 = sum(f1_sums.values())
-    item_share = [per_linker_performance[l]["count"] for l in pass_labels]
+    item_share = [per_linker_performance[l]["count"] for l in quality_labels]
     total_items = sum(item_share)
     item_share_pct = [round(v / total_items * 100, 2) if total_items else 0.0 for v in item_share]
-    f1_share_pct = [round(f1_sums[l] / total_f1 * 100, 2) if total_f1 else 0.0 for l in pass_labels]
+    f1_share_pct = [round(f1_sums[l] / total_f1 * 100, 2) if total_f1 else 0.0 for l in quality_labels]
 
     fig, ax = plt.subplots(figsize=(6, 3.8))
     width = 0.35
-    ax.bar(x - width / 2, item_share_pct, width, label="share of all items", color="#4C72B0")
+    ax.bar(x - width / 2, item_share_pct, width, label="share of scored items", color="#4C72B0")
     ax.bar(x + width / 2, f1_share_pct, width, label="share of total assignment F1", color="#55A868")
-    ax.set_xticks(x, pass_labels)
-    plt.setp(ax.get_xticklabels(), rotation=20, ha="right")
+    ax.set_xticks(x)
+    ax.set_xticklabels(quality_labels, rotation=20, ha="right")
     ax.set_ylabel("% share")
     ax.set_title("Item share vs. F1 contribution share by pass")
     ax.legend()
@@ -756,7 +750,6 @@ def main():
     evaluated_items = []
     totals: dict[str, float] = defaultdict(float)
     n_executable = 0
-    n_with_gold = 0
     n_empty_pred = 0
     n_exec_error = 0
     gold_source_counts: dict[str, int] = defaultdict(int)
@@ -771,8 +764,9 @@ def main():
             item, args.endpoint, args.timeout, args.get_live_gold, common_prefixes
         )
         gold_source_counts[gold_src] += 1
-        if gold_rows:
-            n_with_gold += 1
+
+        # items with no gold answer at all can not be meaningfully scored 
+        is_stale = not gold_rows
 
         # pred answers
         pred_rows: list[list[str]] = []
@@ -794,9 +788,12 @@ def main():
                     n_empty_pred += 1
 
         # scoring
-        item_scores = score(pred_rows, gold_rows)
-        for k, v in item_scores.items():
-            totals[k] += v
+        if is_stale:
+            item_scores = {"exact_match": None, "assignment_f1": None, "hit1": None}
+        else:
+            item_scores = score(pred_rows, gold_rows)
+            for k, v in item_scores.items():
+                totals[k] += v
 
         evaluated_items.append({
             "ID":               item_id,
@@ -806,6 +803,7 @@ def main():
             "gold_relation_map": item.get("gold_relation_map", {}),
             "gold_answers":     gold_rows,
             "gold_answer_source": gold_src,
+            "stale":            is_stale,
             "pred_sparql":      query,
             "pred_entity_map":  item.get("entity_map_used",   {}),
             "pred_relation_map": item.get("predicate_map_used", {}),
@@ -823,19 +821,24 @@ def main():
         })
 
     n = len(items)
+    n_stale = sum(1 for it in evaluated_items if it["stale"])
+    n_scored = n - n_stale
 
     def pct(x): return round(x / n * 100, 2) if n else 0.0
 
     aggregate = {
         "num_items":       n,
+        "num_stale":       n_stale,
+        "stale_pct":       pct(n_stale),
+        "num_scored":      n_scored,
         "num_executable":  n_executable,
         "executable_pct":  pct(n_executable),
         "num_exec_error":  n_exec_error,
         "num_empty_pred":  n_empty_pred,
-        "num_with_gold":   n_with_gold,
-        "exact_match":     round(totals["exact_match"]    / n, 4) if n else 0.0,
-        "assignment_f1":   round(totals["assignment_f1"]  / n, 4) if n else 0.0,
-        "hit1":            round(totals["hit1"]           / n, 4) if n else 0.0,
+        "num_with_gold":   n_scored,
+        "exact_match":     round(totals["exact_match"]    / n_scored, 4) if n_scored else 0.0,
+        "assignment_f1":   round(totals["assignment_f1"]  / n_scored, 4) if n_scored else 0.0,
+        "hit1":            round(totals["hit1"]           / n_scored, 4) if n_scored else 0.0,
     }
 
     print("\n" + "=" * 50)
@@ -852,6 +855,8 @@ def main():
               f"saved_fallback={gold_source_counts.get('saved_fallback', 0)}  "
               f"empty={gold_source_counts.get('empty', 0)}")
     print(f"  Items:          {n}")
+    print(f"  Stale (no gold): {n_stale} ({aggregate['stale_pct']}%)  [excluded from stats below]")
+    print(f"  Scored:         {n_scored}")
     print(f"  Executable:     {n_executable} ({aggregate['executable_pct']}%)")
     print(f"  Exec errors:    {n_exec_error}")
     print(f"  Empty results:  {n_empty_pred}")
@@ -924,10 +929,14 @@ def main():
     predicate_linkers = file_meta.get("predicate_linkers") or []
     distributions = build_distribution_analysis(evaluated_items, predicate_linkers)
     per_linker_performance = build_per_linker_performance(evaluated_items, predicate_linkers)
-    hyperparam = build_hyperparam_analysis(evaluated_items, file_meta, n)
+    hyperparam = build_hyperparam_analysis(evaluated_items, file_meta, n_scored)
 
     print("\nPer-pass executability & quality:")
     for lid, d in per_linker_performance.items():
+        if lid == "_stale":
+            print(f"  {lid:35s} n={d['count']:5d} ({d['pct_of_total']:5.2f}%)  "
+                  f"exec={d['executable_pct']:6.2f}%  (no gold answer — excluded from scoring)")
+            continue
         print(f"  {lid:35s} n={d['count']:5d} ({d['pct_of_total']:5.2f}%)  "
               f"exec={d['executable_pct']:6.2f}%  EM={d['exact_match_rate']:.4f}  "
               f"F1={d['assignment_f1']['mean']:.4f}  Hit@1={d['hit1_rate']:.4f}")
@@ -937,23 +946,12 @@ def main():
             "source_evaluated_file": str(eval_out.resolve()),
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "num_items": n,
+            "num_stale": n_stale,
+            "num_scored": n_scored,
             "aggregate_assignment_f1": aggregate["assignment_f1"],
             "f1_budgets": _F1_BUDGETS,
             "min_cap": _MIN_CAP,
-            "note": (
-                "hyperparameter_sensitivity assumes an item dropped by a "
-                "cap reduction becomes permanently unresolved (worst case). "
-                f"beam_limit/k1/k2 caps are floored at {_MIN_CAP} (the top "
-                "candidate per pass is never droppable). *_curve fields give "
-                "the full cumulative-F1-loss-vs-cap curve, not just the "
-                "three budget-selected points. per_linker_performance is "
-                "the eval-time counterpart to the resolve-file's "
-                "runtime_by_resolution: it reports executability and "
-                "answer-quality (EM/assignment_f1/Hit@1), grouped by which "
-                "predicate-linker pass actually won each item, so pass cost "
-                "(runtime) and pass payoff (quality) can be compared "
-                "directly."
-            ),
+            "note": "",
         },
         "distributions": distributions,
         "per_linker_performance": per_linker_performance,
