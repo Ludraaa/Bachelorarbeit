@@ -87,7 +87,11 @@ RUN mkdir -p \
     /LLMs/data \
     /LLMs/Models \
     /LLMs/MyModels && \
-    echo '{}' > /LLMs/data/dataset_info.json
+    echo '{}' > /LLMs/data/dataset_info.json && \
+    chown -R appuser:appuser \
+        /data \
+        /workspace \
+        /LLMs
 
 
 # ============================================================
@@ -132,7 +136,7 @@ RUN wget -q \
 # Container startup
 # ============================================================
 
-USER root
+USER appuser
 
 CMD ["/bin/bash", "--rcfile", "bashrc"]
 
