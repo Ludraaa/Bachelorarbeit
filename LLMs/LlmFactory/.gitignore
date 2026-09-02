@@ -4,7 +4,7 @@ __pycache__/
 *$py.class
 
 # C extensions
-# *.so
+*.so
 
 # Distribution / packaging
 .Python
@@ -14,7 +14,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-
+lib/
 lib64/
 parts/
 sdist/
@@ -85,7 +85,7 @@ ipython_config.py
 # pyenv
 #   For a library or package, you might want to ignore these files since the code is
 #   intended to run in multiple environments; otherwise, check them in:
-# .python-version
+.python-version
 
 # pipenv
 #   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
@@ -157,55 +157,27 @@ cython_debug/
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
+.idea/
 
-Freebase-Setup/virtuoso_db
-data/common_data/*
-data/CWQ/generation/*
-data/CWQ/sexpr/*
-data/WebQSP/generation/*
-data/WebQSP/sexpr/*
-Reading/*
-LLMs/*
-!LLMs/LlmFactory/
-!LLMs/LlmFactory/**
-train_*.txt
-wandb/*
-pred*.txt
-pred*.json
-LLMs/models/*
-*.ipynb
-log/*
-LLMs/LLaMA/src/run_qlora.sh
-LLMs/LLaMA/src/run_train.sh
-generate_scripts/*
-evaluate_scripts/*
-LLMs/LLaMA1/*
-.vscode/*
-scripts/README_LLaMa2-1.1b.md
-tongji.py
-tongji_webqsp.py
-tongji_cwq.py
+# vscode
+.vscode/
 
-ApacheJena/apache-jena-6.0.0/
-ApacheJena/java/
-*.class
-data/wdql_test1k.json
-data/*
-data2/*
-Freebase-Setup/virtuoso_db.zip
-Freebase-Setup/virtuoso-opensource.tar.gz
-virtuoso-opensource/*
-job.log
-miniconda3/*
-job*.sh
-job*.log
-env2.sh
-env3.sh
-Freebase-Setup/virtuoso_db_corr/
-data2/
-data3/
-data_alt/
+# uv
+uv.lock
 
-# Large installer bundled with LLaMA Factory
-LLMs/LlmFactory/Miniconda3-latest-Linux-x86_64.sh
+# macOS
+.DS_Store
+
+# custom .gitignore
+hf_cache/
+ms_cache/
+om_cache/
+llamaboard_cache/
+llamaboard_config/
+saves/
+output/
+outputs/
+wandb/
+swanlog/
+generated_predictions.jsonl
+predictions_score.json
