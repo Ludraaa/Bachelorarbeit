@@ -15,6 +15,7 @@ import yaml
 from llamafactory.chat import ChatModel
 
 from src.utils.kb import load_kb_module
+from src.utils.run_config import apply_run_config_defaults, require, validate_choice
 
 
 # ---------------------------------------------------------------------------
@@ -22,9 +23,9 @@ from src.utils.kb import load_kb_module
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, required=True,
+    parser.add_argument("--config", type=str, default=None,
                         help="LlamaFactory inference yaml")
-    parser.add_argument("--dataset", type=str, required=True)
+    parser.add_argument("--dataset", type=str, default=None)
     parser.add_argument("--split", type=str, default="test")
     parser.add_argument("--mode", type=str, default="sparql",
                         choices=["jena", "sparql"])
@@ -37,7 +38,16 @@ def parse_args():
                         help="Diversity penalty for group beam search. "
                              "Higher values = more diverse but potentially less coherent outputs. "
                              "Recommended: 1.0 for Llama, 0.5 for Qwen")
-    return parser.parse_args()
+    parser.add_argument("--run_config", type=str, default=None,
+                        help="Path to configs/run/<name>.yaml; values become defaults, "
+                             "explicit flags still override.")
+
+    apply_run_config_defaults(parser, section="generate", config_ref_key="infer_config")
+
+    args = parser.parse_args()
+    require(args, "config", "dataset")
+    validate_choice(args, "mode", ["jena", "sparql"])
+    return args
 
 
 # ---------------------------------------------------------------------------
@@ -213,15 +223,41 @@ def append_checkpoint(jsonl_path: str, idx: int, item: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# build infer config
+
+def build_chat_config(infer_config_path: str, training_config_path: str | None) -> dict:
+    """Infer-only settings (infer_dtype, trust_remote_code, ...) layered on
+    top of the training config's model identity, so model_name_or_path /
+    adapter path / template are declared exactly once, in the training
+    config. Values already present in the infer yaml win (setdefault),
+    so legacy fully-specified infer configs keep working unchanged."""
+    with open(infer_config_path, encoding="utf-8") as f:
+        cfg = yaml.safe_load(f) or {}
+
+    if training_config_path:
+        with open(training_config_path, encoding="utf-8") as f:
+            train_cfg = yaml.safe_load(f)
+        cfg.setdefault("model_name_or_path", train_cfg["model_name_or_path"])
+        cfg.setdefault("adapter_name_or_path", train_cfg.get("output_dir"))
+        cfg.setdefault("finetuning_type", train_cfg.get("finetuning_type"))
+        cfg.setdefault("template", train_cfg.get("template"))
+
+    cfg["infer_backend"] = "huggingface"
+    return cfg
+
+
+# ---------------------------------------------------------------------------
 # Main
 
 def main():
     args = parse_args()
 
-    with open(args.config) as f:
-        cfg = yaml.safe_load(f)
+    run_cfg = {}
+    if args.run_config:
+        with open(args.run_config, encoding="utf-8") as f:
+            run_cfg = yaml.safe_load(f) or {}
 
-    cfg["infer_backend"] = "huggingface"
+    cfg = build_chat_config(args.config, run_cfg.get("training_config"))
 
     # Load KB module
     kb_instance = load_kb_module(args.kb)

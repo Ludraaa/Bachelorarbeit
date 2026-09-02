@@ -1,7 +1,5 @@
 ### Model
-#model_name_or_path: LLMs/Models/llama-2-13b/
-model_name_or_path: LLMs/Models/Qwen25-7b-hf/
-
+model_name_or_path: LLMs/Models/llama-2-13b/
 
 ### Method
 stage: sft
@@ -14,12 +12,11 @@ lora_target: q_proj,v_proj
 ### Dataset
 dataset: CWQ_train.sparql 
 dataset_dir: LLMs/data
-template: qwen
+template: default
 overwrite_cache: true
 
 ### Output
-#output_dir: LLMs/MyModels/Llama-2-13b_CWQ-jena/
-output_dir: LLMs/MyModels/Qwen25-7b_CWQ-sparql/
+output_dir: LLMs/MyModels/Llama-2-13b_CWQ-sparql/
 logging_steps: 10
 save_steps: 1000
 plot_loss: true

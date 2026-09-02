@@ -1,0 +1,28 @@
+dataset: Qald7
+split: test
+mode: sparql
+kb: wikidata
+endpoint_url: "http://amur:7001/sparql"
+note: "official run"
+
+entity_linkers: "ChatKBQA.type_map,Wikidata.wbsearchentities_sim"
+predicate_linkers: "Wikidata.label_search,Wikidata.neighborhood"
+
+dataset_config: configs/datasets/default.yaml
+training_config: configs/training/Wikidata/Qald7/Qwen25-7b_sparql.yaml
+infer_config: configs/infer/default.yaml
+
+generate:
+  num_beams: 15
+  diversity_penalty: 0.4
+
+resolve:
+  k1_per_pass: "100,5"
+  k2_per_pass: "5,15"
+  beam_limits: "15"
+  linker_params: {}
+  label_fallback: false
+  debug: true
+
+eval:
+  get_live_gold: true

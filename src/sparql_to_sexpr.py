@@ -16,6 +16,8 @@ from src.utils.kb import load_kb_module
 from sexpr.jena_interface import fix_sparql_for_jena, detect_query_form, restore_query_form
 from sexpr.jena_interface import sparql_to_algebra, algebra_to_sparql, strip_prefix_and_expand
 
+from src.utils.run_config import apply_run_config_defaults, require
+
 
 MODES  = ("jena", "sparql")
 SPLITS = ("dev", "test", "train")
@@ -44,6 +46,19 @@ def build_output_path(dataset_name: str, split: str, mode: str) -> str:
     data_dir = os.environ.get("DATA_DIR", "data")
     name = f"{dataset_name}_{split}.{mode}.expr.json"
     return os.path.join(data_dir, dataset_name, "sexpr", name)
+
+
+def build_debug_report_path(dataset_name: str, split: str, mode: str, kind: str) -> str:
+    data_dir = os.environ.get("DATA_DIR", "data")
+    name = f"{dataset_name}_{split}.{mode}.expr.{kind}"
+    return os.path.join(data_dir, dataset_name, "sexpr", name)
+
+
+def write_id_report(path: str, ids: list[str]) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        for qid in ids:
+            f.write(f"{qid}\n")
 
 
 # ---------------------------------------------------------------------------
@@ -213,19 +228,25 @@ def process_split(
     mode: str,
     common_prefixes: list,
     config: dict | None = None,
-) -> None:
+) -> dict:
 
     print(f"\n{'=' * 60}")
     print(f"Split: {split} | Mode: {mode}")
     print(f"Input: {input_path}")
 
-    entries      = load_dataset(input_path, config)
-    total        = len(entries)
+    entries = load_dataset(input_path, config)
+    total = len(entries)
     conv_failed  = 0
     conv_skipped = 0
-    exec_ok      = 0
-    exec_failed  = 0
-    converter    = CONVERTERS.get(mode)
+    exec_ok = 0          # normed gold execution ok
+    exec_failed  = 0     # normed gold execution failed
+    raw_exec_failed = 0  # raw (unnormalised) gold execution failed
+    stale_count = 0      # raw gold execution succeeded but returned nothing
+    mismatch_count = 0   # raw gold vs normed gold results differ
+    failed_ids: list[str] = []
+    stale_ids: list[str] = []
+    mismatch_ids: list[str] = []
+    converter = CONVERTERS.get(mode)
     endpoint_url = os.environ.get("ENDPOINT_URL")
 
     if not endpoint_url:
@@ -237,7 +258,7 @@ def process_split(
 
         print(f"[{i+1}/{total}] {qid}", end=" ... ", flush=True)
 
-        # gold SPARQL execution
+        # gold SPARQL normalisation
         normed, norm_err = (
             normalise_gold_sparql(sparql_query, common_prefixes)
             if sparql_query else (None, None)
@@ -246,14 +267,39 @@ def process_split(
         if norm_err:
             entry["normed_sparql_error"] = norm_err
 
+        raw_rows = None
+        normed_rows = None
+
+        # execute the untouched, as-given gold query
+        if sparql_query and endpoint_url:
+            raw_result = execute_sparql(sparql_query, endpoint_url)
+            if raw_result is not None:
+                raw_rows = bindings_to_rows(raw_result)
+                entry["gold_raw_answer"] = raw_rows
+                if not raw_rows:
+                    stale_count += 1
+                    stale_ids.append(qid)
+            else:
+                entry["gold_raw_exec_failed"] = True
+                raw_exec_failed += 1
+
+        # execute the normalised gold query (this is what downstream scoring uses)
         if normed and endpoint_url:
-            raw = execute_sparql(normed, endpoint_url)
-            if raw is not None:
-                entry["answer"] = bindings_to_rows(raw)
+            normed_result = execute_sparql(normed, endpoint_url)
+            if normed_result is not None:
+                normed_rows = bindings_to_rows(normed_result)
+                entry["answer"] = normed_rows
                 exec_ok += 1
             else:
                 entry["answer_exec_failed"] = True
                 exec_failed += 1
+
+        # compare raw vs normed gold execution -- catches normalisation bugs
+        if raw_rows is not None and normed_rows is not None:
+            if {tuple(r) for r in raw_rows} != {tuple(r) for r in normed_rows}:
+                entry["gold_normed_mismatch"] = True
+                mismatch_count += 1
+                mismatch_ids.append(qid)
 
         # s-expression conversion
         if not sparql_query:
@@ -271,7 +317,18 @@ def process_split(
         except Exception as e:
             entry["Sexpr"] = "Parsing failed"
             conv_failed += 1
+            failed_ids.append(qid)
             print(f"FAILED ({e})")
+
+    norm_failed = sum(1 for e in entries if e.get("normed_sparql_error"))
+    conv_ok = total - conv_failed - conv_skipped
+
+    print(f"\nConversion : {conv_ok}/{total} ok, {conv_failed} failed, {conv_skipped} skipped")
+    print(f"Gold norm  : {total - norm_failed}/{total} ok, {norm_failed} failed")
+    if endpoint_url:
+        print(f"Gold exec (raw)    : {raw_exec_failed} failed, {stale_count} empty")
+        print(f"Gold exec (normed) : {exec_ok}/{total} ok, {exec_failed} failed")
+        print(f"Raw vs normed mismatch : {mismatch_count}")
 
     out_path = build_output_path(dataset_name, split, mode)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -279,13 +336,49 @@ def process_split(
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(entries, f, indent=2, ensure_ascii=False)
 
-    norm_failed = sum(1 for e in entries if e.get("normed_sparql_error"))
-    conv_ok = total - conv_failed - conv_skipped
-    print(f"\nConversion : {conv_ok}/{total} ok, {conv_failed} failed, {conv_skipped} skipped")
-    print(f"Gold norm  : {total - norm_failed}/{total} ok, {norm_failed} failed")
-    if endpoint_url:
-        print(f"Execution  : {exec_ok}/{total} ok, {exec_failed} failed")
     print(f"Saved: {out_path}")
+
+    return {
+        "dataset": dataset_name,
+        "split": split,
+        "mode": mode,
+        "total": total,
+        "conv_ok": conv_ok,
+        "conv_failed": conv_failed,
+        "conv_skipped": conv_skipped,
+        "norm_failed": norm_failed,
+        "exec_ok": exec_ok,
+        "exec_failed": exec_failed,
+        "raw_exec_failed": raw_exec_failed,
+        "stale_count": stale_count,
+        "mismatch_count": mismatch_count,
+        "failed_ids": failed_ids,
+        "stale_ids": stale_ids,
+        "mismatch_ids": mismatch_ids,
+    }
+
+
+def print_final_overview(results: list[dict]) -> None:
+    print(f"\n{'=' * 60}")
+    print("Overview (all splits)")
+    print(f"{'=' * 60}")
+
+    for r in results:
+        print(f"\nSplit: {r['split']}")
+        print(f"  Conversion : {r['conv_ok']}/{r['total']} ok, {r['conv_failed']} failed, {r['conv_skipped']} skipped")
+        print(f"  Gold norm  : {r['total'] - r['norm_failed']}/{r['total']} ok, {r['norm_failed']} failed")
+        print(f"  Empty gold results (stale dataset?) : {r['stale_count']}")
+        print(f"  Raw vs normed gold result mismatch  : {r['mismatch_count']}")
+
+        for kind, ids in (
+            ("failed", r["failed_ids"]),
+            ("stale", r["stale_ids"]),
+            ("mismatch", r["mismatch_ids"]),
+        ):
+            if ids:
+                path = build_debug_report_path(r["dataset"], r["split"], r["mode"], kind)
+                write_id_report(path, ids)
+                print(f"  -> wrote {len(ids)} id(s) to {path}")
 
 
 # ---------------------------------------------------------------------------
@@ -294,12 +387,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Convert SPARQL queries in dataset splits to target representation."
     )
-    parser.add_argument("--dataset", required=True, help="Dataset name")
+    parser.add_argument("--dataset", default=None, help="Dataset name")
     parser.add_argument("--mode", choices=MODES, default="sparql", help="Conversion mode")
     parser.add_argument("--kb", default="wikidata", help="KB module")
     parser.add_argument("--config", default=None, help="Optional YAML config for dataset")
+    parser.add_argument("--run_config", type=str, default=None,
+                        help="Path to configs/run/<name>.yaml"
+                        )
+
+    apply_run_config_defaults(parser, section="convert", config_ref_key="dataset_config")
 
     args = parser.parse_args()
+    require(args, "dataset")
 
     dataset = args.dataset
     splits = get_split_files(dataset)
@@ -318,15 +417,17 @@ def main() -> None:
         print(f"Loaded config: {args.config}")
 
     if not splits:
-        origin = os.path.join("data", dataset, "origin")
         print(f"No files found for '{dataset}'")
-        print(f"Looked in: {os.path.abspath(origin)}")
         return
 
     print(f"Found splits: {', '.join(s for s, _ in splits)}")
 
+    results = []
     for split, path in splits:
-        process_split(dataset, split, path, args.mode, prefixes, config)
+        result = process_split(dataset, split, path, args.mode, prefixes, config)
+        results.append(result)
+
+    print_final_overview(results)
 
     print("\nDone.")
 

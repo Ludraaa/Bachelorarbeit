@@ -4,16 +4,26 @@ import argparse
 from tqdm import tqdm
 from pathlib import Path
 
+from src.utils.run_config import apply_run_config_defaults, require
+
 # ---------------------------------------------------------------------------
 # args
 
 def _parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', required=True, type=str,
+    parser.add_argument('--dataset', default=None, type=str,
                         help="Dataset name, e.g. WebQSP — resolves to data/{dataset}/generation/merged/")
     parser.add_argument('--split', default='train', type=str,
                         help="Split to process: train | dev | test (default: train)")
-    return parser.parse_args()
+    parser.add_argument('--run_config', default=None, type=str,
+                        help="Path to configs/run/<name>.yaml; values become defaults, "
+                             "explicit flags still override.")
+
+    apply_run_config_defaults(parser, section="prepare")
+
+    args = parser.parse_args()
+    require(args, "dataset")
+    return args
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +97,7 @@ def prepare_dataloader(args, split):
             json.dump(json_data, f, ensure_ascii=False)
         print(f'Written {len(json_data)} examples to {output_dir}')
 
-        register_dataset(args.dataset, f"{args.split}.{mode}")
+        register_dataset(args.dataset, f"train.{mode}")
 
 LLM_DIR = os.getenv("LLM_DIR", "LLMs")
 DATASET_INFO_PATH = f'{LLM_DIR}/data/dataset_info.json'
@@ -123,5 +133,5 @@ def register_dataset(dataset: str, split: str) -> None:
 if __name__ == '__main__':
     args = _parse_args()
     print(args)
-    prepare_dataloader(args, args.split)
+    prepare_dataloader(args, "train")
     print('Finished')

@@ -29,6 +29,7 @@ from src.chatkbqa.lisp_to_sparql_chatkbqa import sexpr_to_sparql as chatkbqa_web
 from src.chatkbqa.lisp_to_sparql_chatkbqa_cwq import sexpr_to_sparql as chatkbqa_cwq_sexpr_to_sparql
 from src.utils.sparql_exec import _SPARQL_HEADERS
 from src.utils.kb import load_kb_module
+from src.utils.run_config import apply_run_config_defaults, require
 
 ENDPOINT_URL = os.environ.get("ENDPOINT_URL", "https://query.wikidata.org/sparql")
 
@@ -65,12 +66,6 @@ def _get_pass_val(values: list, pass_idx: int):
 # Per-item timeout helper
 
 def _deadline_exceeded(deadline: float | None) -> bool:
-    """
-    `deadline` is an absolute time.perf_counter() timestamp, or None for
-    "no limit". Checked at cheap, regular intervals inside the beam /
-    entity-permutation / predicate-permutation / SPARQL-candidate loops so
-    a slow item can be abandoned promptly instead of running to completion.
-    """
     return deadline is not None and time.perf_counter() > deadline
 
 
@@ -80,13 +75,16 @@ def _deadline_exceeded(deadline: float | None) -> bool:
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--dataset",   type=str, required=True)
+    # NOTE: both were required=True. Changed to optional + require() below
+    # so a run_config's top-level `dataset` / `model_id` can fill these in
+    # (argparse's required=True ignores set_defaults()).
+    parser.add_argument("--dataset",   type=str, default=None)
     parser.add_argument("--split",     type=str, default="test")
     parser.add_argument(
         "--mode", type=str, default="simple",
         choices=["chatkbqa_webqsp", "chatkbqa_cwq", "jena", "sparql"],
     )
-    parser.add_argument("--model_id",  type=str, required=True)
+    parser.add_argument("--model_id",  type=str, default=None)
     parser.add_argument("--data_dir",  type=str, default="data")
 
     parser.add_argument(
@@ -166,10 +164,36 @@ def parse_args():
         "--note", type=str, default="",
         help="Optional free-text note stored in the output metadata.",
     )
+    parser.add_argument("--label_fallback", action="store_true")
 
     parser.add_argument("--debug", action="store_true")
 
-    return parser.parse_args()
+    parser.add_argument(
+        "--endpoint_url", type=str,
+        default=os.environ.get("ENDPOINT_URL", "https://query.wikidata.org/sparql"),
+        help="SPARQL endpoint used during resolution.",
+    )
+
+    parser.add_argument(
+        "--run_name", type=str, default=None,
+        help=(
+            "Folder name for this run's output under resolved/. Derived from "
+            "--run_config's name if omitted, else falls back to the "
+            "entity+predicate linker combo id (the old default behaviour)."
+        ),
+    )
+
+    parser.add_argument(
+        "--run_config", type=str, default=None,
+        help="Path to configs/run/<name>.yaml; values become defaults, "
+             "explicit flags still override.",
+    )
+
+    apply_run_config_defaults(parser, section="resolve")
+
+    args = parser.parse_args()
+    require(args, "dataset", "model_id")
+    return args
 
 
 # ---------------------------------------------------------------------------
@@ -189,13 +213,64 @@ def load_predictions(data_dir, dataset, model_id, split, mode):
     return [items, meta]
 
 
-def resolve_output_path(args, linker_id: str) -> str:
+def resolve_output_path(args, folder_name: str) -> str:
     out_dir = args.output_dir or os.path.join(
         args.data_dir, args.dataset, "predictions",
-        args.model_id, "resolved", linker_id,
+        args.model_id, "resolved", folder_name,
     )
     os.makedirs(out_dir, exist_ok=True)
     return os.path.join(out_dir, f"{args.dataset}_{args.split}.{args.mode}.jsonl")
+
+
+def _run_manifest_dict(
+    args,
+    entity_linker_ids: list[str],
+    predicate_linker_ids: list[str],
+    linker_params: dict,
+    beam_limits: list[int],
+    k1_list: list[int],
+    t1_list: list[float],
+    k2_list: list[int],
+    t2_list: list[float],
+    n_passes: int,
+) -> dict:
+    """
+    The subset of parameters that determine the *content* of a resolved run.
+    Written once per run folder; compared on every later invocation so a
+    reused --run_name / run_config name with different parameters is caught
+    instead of silently mixing two configurations' items into one JSONL.
+    """
+    return {
+        "kb": args.kb,
+        "mode": args.mode,
+        "entity_linkers": entity_linker_ids,
+        "predicate_linkers": predicate_linker_ids,
+        "linker_params": linker_params,
+        "beam_limits": [_get_pass_val(beam_limits, i) for i in range(n_passes)],
+        "k1_per_pass": [_get_pass_val(k1_list, i) for i in range(n_passes)],
+        "t1_per_pass": [_get_pass_val(t1_list, i) for i in range(n_passes)],
+        "k2_per_pass": [_get_pass_val(k2_list, i) for i in range(n_passes)],
+        "t2_per_pass": [_get_pass_val(t2_list, i) for i in range(n_passes)],
+        "label_fallback": args.label_fallback,
+        "item_time_limit_sec": args.item_time_limit_sec,
+    }
+
+
+def _check_or_write_manifest(run_dir: str, manifest: dict) -> None:
+    path = os.path.join(run_dir, "run_manifest.json")
+    if os.path.exists(path):
+        existing = json.loads(Path(path).read_text(encoding="utf-8"))
+        if existing != manifest:
+            raise ValueError(
+                f"Run folder already exists with different parameters: {run_dir}\n"
+                f"Existing:  {json.dumps(existing, sort_keys=True)}\n"
+                f"Requested: {json.dumps(manifest, sort_keys=True)}\n"
+                f"Use a different --run_name (or run_config name), or delete the "
+                f"folder to start over."
+            )
+    else:
+        os.makedirs(run_dir, exist_ok=True)
+        Path(path).write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -398,6 +473,7 @@ def run_single_pass(
     pass_index: int,
     pass_linker_id: str,
     debug: bool,
+    label_fallback: bool,
     deadline: float | None = None,
 ) -> PassResult:
     pass_start = time.perf_counter()
@@ -507,7 +583,7 @@ def run_single_pass(
                 _log(f"  beam {beam_rank}, ep {ep_idx}, pp {pp_idx}: substitute + to_sparql")
                 resolved = substitute(beam, entity_map, predicate_map, True)
 
-                sparql_candidates = to_sparql(resolved, mode)
+                sparql_candidates = to_sparql(resolved, mode, label_fallback)
                 sparql_candidates = [inject_prefixes(s, common_prefixes) for s in sparql_candidates]
                 conversion_ok = len(sparql_candidates) > 0
 
@@ -619,45 +695,34 @@ def _entity_label_fallback(sparql: str) -> str | None:
     return None
 
 
-def to_sparql(query: str, mode: str) -> list[str]:
+def to_sparql(query: str, mode: str, label_fallback: bool) -> list[str]:
+    converters = {
+        "jena": algebra_to_sparql,
+        "chatkbqa_webqsp": chatkbqa_webqsp_sexpr_to_sparql,
+        "chatkbqa_cwq": chatkbqa_cwq_sexpr_to_sparql,
+    }
+
     if mode == "sparql":
-        return [query]
-
-    if mode == "jena":
+        candidates = [query]
+    elif converter := converters.get(mode):
         try:
-            sparql = algebra_to_sparql(query)
+            sparql = converter(query)
         except Exception:
             return []
-        return [sparql] if sparql is not None else []
 
-    if mode == "chatkbqa_webqsp":
-        try:
-            sparql = chatkbqa_webqsp_sexpr_to_sparql(query)
-        except Exception:
-            return []
         if sparql is None:
             return []
-        candidates = [sparql]
-        #fallback = _entity_label_fallback(sparql)
-        #if fallback is not None:
-        #    candidates.append(fallback)
-        return candidates
 
-    if mode == "chatkbqa_cwq":
-        try:
-            sparql = chatkbqa_cwq_sexpr_to_sparql(query)
-        except Exception:
-            return []
-        if sparql is None:
-            return []
         candidates = [sparql]
-        #fallback = _entity_label_fallback(sparql)
-        #if fallback is not None:
-        #    candidates.append(fallback)
-        return candidates
+    else:
+        candidates = [query]
 
-    # fallback
-    return [query]
+    if label_fallback:
+        fallback = _entity_label_fallback(candidates[0])
+        if fallback:
+            candidates.append(fallback)
+
+    return candidates
 
 
 def inject_prefixes(sparql: str, common_prefixes: dict[str, str]) -> str:
@@ -736,6 +801,7 @@ def resolve_item(
     mode: str,
     type_map: dict,
     debug: bool,
+    label_fallback: bool,
     time_limit_sec: float | None = None,
 ) -> tuple[PassResult, list[PassResult]]:
     all_pass_results: list[PassResult] = []
@@ -784,6 +850,7 @@ def resolve_item(
             pass_index=pass_idx,
             pass_linker_id=linker_id,
             debug=debug,
+            label_fallback=label_fallback,
             deadline=item_deadline,
         )
         _log(f"  pass {pass_idx} ({linker_id}): done, found={pass_result.found}, timed_out={pass_result.timed_out}, runtime={pass_result.runtime_sec:.2f}s")
@@ -857,6 +924,9 @@ def main():
         global DO_LOG
         DO_LOG = True
 
+    global ENDPOINT_URL
+    ENDPOINT_URL = args.endpoint_url
+
     entity_linker_ids = [s.strip() for s in args.entity_linkers.split(",") if s.strip()]
     predicate_linker_ids = [s.strip() for s in args.predicate_linkers.split(",") if s.strip()]
     n_passes = len(predicate_linker_ids)
@@ -928,11 +998,23 @@ def main():
         data = data[: args.max_samples]
         print(f"Capped to {len(data)} examples")
 
-    jsonl_path = resolve_output_path(args, linker_combo_id)
+    folder_name = args.run_name or linker_combo_id
+    jsonl_path = resolve_output_path(args, folder_name)
     json_path  = jsonl_path.replace(".jsonl", ".json")
 
     debug_jsonl_path = jsonl_path.replace(".jsonl", ".debug.jsonl") if args.debug else None
     debug_json_path  = jsonl_path.replace(".jsonl", ".debug.json")  if args.debug else None
+
+    # ------------------------------------------------------------------
+    # run-folder identity check: catch a reused --run_name / run_config
+    # name whose parameters differ from what's already in that folder.
+
+    run_dir = os.path.dirname(jsonl_path)
+    manifest = _run_manifest_dict(
+        args, entity_linker_ids, predicate_linker_ids, linker_params,
+        beam_limits, k1_list, t1_list, k2_list, t2_list, n_passes,
+    )
+    _check_or_write_manifest(run_dir, manifest)
 
     # ------------------------------------------------------------------
     # load already-processed items and reconstruct counters
@@ -972,7 +1054,7 @@ def main():
                            k1_list, t1_list, k2_list, t2_list,
                            len(data), executable_count, timeout_count, pass_counts,
                            entity_linker_params, predicate_linker_params,
-                           runtime_agg)
+                           runtime_agg, args.label_fallback, args.run_name, linker_combo_id)
         out = _finalize_to_json(jsonl_path, meta)
         print(f"Finalised → {out}")
         if args.debug and debug_jsonl_path:
@@ -996,6 +1078,7 @@ def main():
     print(f"  t2 per pass:      {[_get_pass_val(t2_list, i) for i in range(n_passes)]}")
     print(f"  Item time limit:  {args.item_time_limit_sec if args.item_time_limit_sec is not None else 'none'}")
     print(f"  Endpoint:         {ENDPOINT_URL}")
+    print(f"  Run folder:       {folder_name}")
     print(f"  Output (JSONL):   {jsonl_path}\n")
 
     for item_idx, item in enumerate(tqdm(data)):
@@ -1028,6 +1111,7 @@ def main():
             mode=args.mode,
             type_map=type_map,
             debug=args.debug,
+            label_fallback=args.label_fallback,
             time_limit_sec=args.item_time_limit_sec,
         )
         item_runtime_sec = sum(pr.runtime_sec for pr in all_passes)
@@ -1118,7 +1202,7 @@ def main():
                        k1_list, t1_list, k2_list, t2_list,
                        num_items, executable_count, timeout_count, pass_counts,
                        entity_linker_params, predicate_linker_params,
-                       runtime_agg)
+                       runtime_agg, args.label_fallback, args.run_name, linker_combo_id)
 
     out = _finalize_to_json(jsonl_path, meta)
 
@@ -1158,6 +1242,9 @@ def _build_meta(
     entity_linker_params: dict,
     predicate_linker_params: dict,
     runtime_agg: dict,
+    label_fallback: bool,
+    run_name: str | None,
+    linker_combo_id: str,
 ) -> dict:
     n = len(predicate_linker_ids)
     return {
@@ -1167,6 +1254,8 @@ def _build_meta(
         "model_id":         args.model_id,
         "kb":               args.kb,
         "mode":             args.mode,
+        "run_name":         run_name,
+        "linker_combo_id":  linker_combo_id,
         "entity_linkers":   entity_linker_ids,
         "entity_linker_params":    entity_linker_params,
         "predicate_linkers": predicate_linker_ids,
@@ -1178,6 +1267,7 @@ def _build_meta(
         "t2_per_pass":      [_get_pass_val(t2_list, i) for i in range(n)],
         "item_time_limit_sec": args.item_time_limit_sec,
         "endpoint":         ENDPOINT_URL,
+        "label_fallback":   label_fallback,
         "data_dir":         args.data_dir,
         "note":             args.note,
         "num_items":        num_items,

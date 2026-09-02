@@ -1,32 +1,21 @@
 #!/bin/bash
-set -a 
+set -a
 
-# caches
-export HF_HOME=/work/dlclarge2/drayerl-Bachelorarbeit_SS/.hf_cache
-export TRANSFORMERS_CACHE=/work/dlclarge2/drayerl-Bachelorarbeit_SS/.hf_cache
-export PIP_CACHE_DIR=/work/dlclarge2/drayerl-Bachelorarbeit_SS/.pip_cache
+# Caches
+export HF_HOME=/workspace/.hf-cache
+export TRANSFORMERS_CACHE=/workspace/.hf-cache
+export PIP_CACHE_DIR=/workspace/.pip-cache
 
-# Path to JDK
-export JAVA_HOME=ApacheJena/java/jdk-21.0.10/
+# Java / Apache Jena
+export JAVA_HOME=/opt/ApacheJena/java/jdk-21.0.10
+export JENA_HOME=/opt/ApacheJena/apache-jena-6.0.0
 
-# Path to Apache Jena 
-export JENA_HOME=ApacheJena/apache-jena-6.0.0/
+# Pipeline directories
+export DATA_DIR=/data
+export LLM_DIR=/LLMs
 
-# SPARQL Endpoint
-#export ENDPOINT_URL=https://qlever.dev/api/wikidata
-#export ENDPOINT_URL="https://query.wikidata.org/sparql"
-#export ENDPOINT_URL="http://amur:7001/sparql" #wikidata
-#export ENDPOINT_URL="http://tagus:7002/sparql" #freebase
-export ENDPOINT_URL="http://localhost:3001/sparql"
-
+# Network
 export no_proxy=localhost,127.0.0.1,0.0.0.0,tagus,10.8.152.111
 export NO_PROXY=localhost,127.0.0.1,0.0.0.0,tagus,10.8.152.111
 
-export DATA_DIR="data/"
-export LLM_DIR="LLMs/"
-
-
-# conda/venv
-source /work/dlclarge2/drayerl-Bachelorarbeit_SS/miniconda3/bin/activate
-conda activate chatkbqa
-export PYTHONPATH=/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA
+set +a

@@ -25,10 +25,13 @@ from src.utils.sparql_exec import (
 )
 
 from src.utils.kb import load_kb_module
+from src.utils.run_config import apply_run_config_defaults, require, validate_choice
 
 _DEFAULT_ENDPOINT = os.environ.get("ENDPOINT_URL", "https://query.wikidata.org/sparql")
 _DATA_DIR = os.environ.get("DATA_DIR", "data")
 _DEFAULT_LEDGER = "results/results.json"
+
+_MODES = ("chatkbqa_webqsp", "chatkbqa_cwq", "jena", "sparql")
 
 # F1 budgets for the hyperparameter-sensitivity analysis
 _F1_BUDGETS = {
@@ -60,16 +63,20 @@ def parse_args():
         description="Evaluate resolved KBQA predictions and record results."
     )
 
-    parser.add_argument("--dataset", required=True, help="Dataset name.")
-    parser.add_argument("--split", required=True, help="Split: dev / test (/ train).")
-    parser.add_argument("--mode", required=True, choices=["chatkbqa_webqsp", "chatkbqa_cwq", "jena", "sparql"],
+    # NOTE: all six of these were required=True. Changed to optional +
+    # require() below so a run_config's top-level values can fill them in
+    # (argparse's required=True ignores set_defaults()).
+    parser.add_argument("--dataset", default=None, help="Dataset name.")
+    parser.add_argument("--split", default=None, help="Split: dev / test (/ train).")
+    parser.add_argument("--mode", default=None, choices=list(_MODES),
                         help="Conversion mode used during resolution.")
-    parser.add_argument("--model_id", required=True, help="Model identifier.")
-    parser.add_argument("--entity_linkers", required=True,
+    parser.add_argument("--model_id", default=None, help="Model identifier.")
+    parser.add_argument("--entity_linkers", default=None,
                         help="Comma-seperated list of entity linkers used.")
-    parser.add_argument("--predicate_linkers", required=True,
+    parser.add_argument("--predicate_linkers", default=None,
                         help="Comma-seperated list of predicate linkers used.")
-    parser.add_argument("--endpoint", default=_DEFAULT_ENDPOINT,
+
+    parser.add_argument("--endpoint_url", default=_DEFAULT_ENDPOINT,
                         help="SPARQL endpoint URL for execution.")
     parser.add_argument("--timeout", type=int, default=60,
                         help="Per-query HTTP timeout in seconds.")
@@ -88,18 +95,42 @@ def parse_args():
     parser.add_argument("--skip_analysis", action="store_true", default=False,
                         help="Skip the distribution/hyperparameter-sensitivity analysis and plots.")
 
-    return parser.parse_args()
+    parser.add_argument("--run_name", type=str, default=None,
+        help=(
+            "Folder name the resolved/evaluated output lives under. Derived "
+            "from --run_config's name if omitted, else falls back to the "
+            "entity+predicate linker combo id (the old default behaviour) — "
+            "must match whatever resolve_predictions.py used for this run."
+        ),
+    )
+    parser.add_argument("--run_config", type=str, default=None,
+        help="Path to configs/run/<name>.yaml; values become defaults, "
+             "explicit flags still override.",
+    )
+
+    apply_run_config_defaults(parser, section="eval")
+
+    args = parser.parse_args()
+    require(args, "dataset", "split", "mode", "model_id", "entity_linkers", "predicate_linkers")
+    validate_choice(args, "mode", _MODES)
+    return args
 
 
 # --------------------------------------------
 # Path helpers
 
-def resolved_path(data_dir, dataset, model_id, entity_linkers, predicate_linkers, split, mode):
-    return (Path(data_dir) / dataset / "predictions" / model_id / "resolved" / f"{'+'.join(entity_linkers.split(','))}+{'+'.join(predicate_linkers.split(','))}" / f"{dataset}_{split}.{mode}.json")
+def _folder_name(args) -> str:
+    if args.run_name:
+        return args.run_name
+    return f"{'+'.join(args.entity_linkers.split(','))}+{'+'.join(args.predicate_linkers.split(','))}"
 
 
-def evaluated_path(data_dir, dataset, model_id, entity_linkers, predicate_linkers, split, mode):
-    return (Path(data_dir) / dataset / "predictions" / model_id / "evaluated" / f"{'+'.join(entity_linkers.split(','))}+{'+'.join(predicate_linkers.split(','))}" / f"{dataset}_{split}.{mode}.json")
+def resolved_path(data_dir, dataset, model_id, folder_name, split, mode):
+    return (Path(data_dir) / dataset / "predictions" / model_id / "resolved" / folder_name / f"{dataset}_{split}.{mode}.json")
+
+
+def evaluated_path(data_dir, dataset, model_id, folder_name, split, mode):
+    return (Path(data_dir) / dataset / "predictions" / model_id / "evaluated" / folder_name / f"{dataset}_{split}.{mode}.json")
 
 
 def analysis_json_path(eval_out: Path) -> Path:
@@ -712,8 +743,10 @@ def generate_per_linker_plots(evaluated_items: list[dict], predicate_linkers: li
 def main():
     args = parse_args()
 
-    res_path = resolved_path(_DATA_DIR, args.dataset, args.model_id, args.entity_linkers, args.predicate_linkers, args.split, args.mode)
-    eval_out = evaluated_path(_DATA_DIR, args.dataset, args.model_id, args.entity_linkers, args.predicate_linkers, args.split, args.mode)
+    folder_name = _folder_name(args)
+
+    res_path = resolved_path(_DATA_DIR, args.dataset, args.model_id, folder_name, args.split, args.mode)
+    eval_out = evaluated_path(_DATA_DIR, args.dataset, args.model_id, folder_name, args.split, args.mode)
 
     if not res_path.exists():
         raise FileNotFoundError(f"Resolved file not found: {res_path}")
@@ -743,7 +776,8 @@ def main():
         print(f"Capped to {len(items)} items")
 
     print()
-    print(f"Evaluating against: {args.endpoint}")
+    print(f"Run folder:         {folder_name}")
+    print(f"Evaluating against: {args.endpoint_url}")
     print(f"Evaluated file:     {eval_out}")
     print(f"Ledger:             {args.ledger}\n")
 
@@ -761,7 +795,7 @@ def main():
 
         # get gold answers + source
         gold_rows, gold_src = get_gold_answers(
-            item, args.endpoint, args.timeout, args.get_live_gold, common_prefixes
+            item, args.endpoint_url, args.timeout, args.get_live_gold, common_prefixes
         )
         gold_source_counts[gold_src] += 1
 
@@ -774,7 +808,7 @@ def main():
 
         if query and item.get("executable", False):
             n_executable += 1
-            bindings = execute_sparql(query, args.endpoint, args.timeout)
+            bindings = execute_sparql(query, args.endpoint_url, args.timeout)
 
             if bindings is None:
                 exec_status  = "error"
@@ -848,7 +882,7 @@ def main():
     print(f"  KB:             {kb_name}")
     print(f"  Entity Linkers: {args.entity_linkers.split(',')}")
     print(f"  Predicate Linkers: {args.predicate_linkers.split(',')}")
-    print(f"  Eval endpoint:  {args.endpoint}")
+    print(f"  Eval endpoint:  {args.endpoint_url}")
     print(f"  Gold source:    {gold_source_label}")
     if args.get_live_gold:
         print(f"    live={gold_source_counts.get('live', 0)}  "
@@ -872,7 +906,7 @@ def main():
         "meta": {
             **file_meta,
             "eval_timestamp":     datetime.now(timezone.utc).isoformat(),
-            "eval_endpoint":      args.endpoint,
+            "eval_endpoint":      args.endpoint_url,
             "gold_answer_source": "live" if args.get_live_gold else "saved",
             "eval_note":          args.note,
             **aggregate,
@@ -888,7 +922,7 @@ def main():
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "resolved_file": str(res_path.resolve()),
         "evaluated_file": str(eval_out.resolve()),
-        "eval_endpoint": args.endpoint,
+        "eval_endpoint": args.endpoint_url,
         "gold_answer_source": "live" if args.get_live_gold else "saved",
         "resolve_note": file_meta.get("note", ""),
         "eval_note": args.note,
@@ -897,6 +931,8 @@ def main():
         "model_id": file_meta.get("model_id"),
         "kb": file_meta.get("kb"),
         "mode": file_meta.get("mode"),
+        "run_name": file_meta.get("run_name"),
+        "linker_combo_id": file_meta.get("linker_combo_id"),
         "entity_linker": file_meta.get("entity_linkers"),
         "entity_linker_params": file_meta.get("entity_linker_params"),
         "predicate_linkers": file_meta.get("predicate_linkers"),

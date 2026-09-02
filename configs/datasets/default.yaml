@@ -1,4 +1,4 @@
 fields:
-  ID: id
+  id: id
   question: question
   sparql: sparql

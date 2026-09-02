@@ -1,0 +1,28 @@
+dataset: CWQ
+split: test
+mode: sparql
+kb: freebase
+endpoint_url: "http://localhost:3001/sparql"
+note: "official run"
+
+entity_linkers: "ChatKBQA.type_map,ChatKBQA.facc1"
+predicate_linkers: "ChatKBQA.simple,ChatKBQA.neighborhood"
+
+dataset_config: configs/datasets/CWQ.yaml
+training_config: configs/training/Freebase/CWQ/Llama-2-13b_sparql.yaml
+infer_config: configs/infer/default.yaml
+
+generate:
+  num_beams: 8
+  diversity_penalty: 1.0
+
+resolve:
+  k1_per_pass: "500,30"
+  k2_per_pass: "1,300"
+  beam_limits: "8"
+  linker_params: {}
+  label_fallback: false
+  debug: true
+
+eval:
+  get_live_gold: true

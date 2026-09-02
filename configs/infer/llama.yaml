@@ -1,9 +1,0 @@
-model_name_or_path: LLMs/Models/llama-2-13b
-
-adapter_name_or_path: LLMs/MyModels/Llama-2-13b_CWQ-sparql
-finetuning_type: lora
-
-template: default
-
-infer_dtype: bfloat16
-trust_remote_code: true

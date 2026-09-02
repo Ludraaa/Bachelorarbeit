@@ -7,10 +7,13 @@ from pathlib import Path
 import requests
 from utils.retry import call_with_retry
 from src.utils.kb import load_kb_module
+from src.utils.run_config import apply_run_config_defaults, require
 
 
 ENDPOINT_URL = os.getenv("ENDPOINT_URL", "https://query.wikidata.org/sparql")
 BATCH_SIZE = 50
+
+SPLITS = ("dev", "test", "train")
 
 _SPARQL_HEADERS = {
     "Accept": "application/sparql-results+json",
@@ -125,26 +128,32 @@ def resolve_endpoint(kb) -> str:
 # ---------------------------------------------------------------------------
 # file stuff
 
-def get_paths(dataset: str, split: str) -> dict[str, dict]:
+def discover_paths(dataset: str) -> dict[str, dict[str, dict]]:
     data_dir = Path(os.getenv("DATA_DIR", "data"))
     base = data_dir / dataset
     input_dir = base / "sexpr"
 
-    grouped: dict[str, list[Path]] = {}
+    result: dict[str, dict[str, dict]] = {}
 
-    for f in input_dir.glob(f"{dataset}_{split}*.expr.json"):
-        parts = f.stem.split(".")
-        if len(parts) < 3:
+    for split in SPLITS:
+        grouped: dict[str, list[Path]] = {}
+        for f in input_dir.glob(f"{dataset}_{split}*.expr.json"):
+            parts = f.stem.split(".")
+            if len(parts) < 3:
+                continue
+            mode = parts[-2]
+            grouped.setdefault(mode, []).append(f)
+
+        if not grouped:
             continue
-        mode = parts[-2]
-        grouped.setdefault(mode, []).append(f)
 
-    result = {}
-    for mode, paths in grouped.items():
-        result[mode] = {
-            "inputs": sorted(paths),
-            "merged": base / "generation" / "merged" / f"{dataset}_{split}.{mode}.json",
-            "label_cache": base / "cache" / "labels.json",
+        result[split] = {
+            mode: {
+                "inputs": sorted(paths),
+                "merged": base / "generation" / "merged" / f"{dataset}_{split}.{mode}.json",
+                "label_cache": base / "cache" / "labels.json",
+            }
+            for mode, paths in grouped.items()
         }
 
     return result
@@ -534,11 +543,19 @@ def main():
     global _debug
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", required=True)
-    parser.add_argument("--split", default="train")
+    # NOTE: was required=True. Changed to optional + require() below so a
+    # run_config's top-level `dataset` can fill it in.
+    parser.add_argument("--dataset", default=None)
     parser.add_argument("--kb", default="wikidata")
     parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--run_config", type=str, default=None,
+                        help="Path to configs/run/<name>.yaml; values become defaults, "
+                             "explicit flags still override.")
+
+    apply_run_config_defaults(parser, section="labels")
+
     args = parser.parse_args()
+    require(args, "dataset")
 
     _debug = args.debug
 
@@ -552,10 +569,12 @@ def main():
     debug(f"KB ENDPOINT_URL = {resolve_endpoint(kb)}")
     debug(f"KB LABEL_QUERY =\n{getattr(kb, 'LABEL_QUERY', '(not set)')}")
 
-    paths_by_mode = get_paths(args.dataset, args.split)
-    if not paths_by_mode:
+    paths_by_split = discover_paths(args.dataset)
+    if not paths_by_split:
         print("no input files found", file=sys.stderr)
         sys.exit(1)
+
+    print(f"Found splits: {', '.join(paths_by_split.keys())}")
 
     has_types = hasattr(kb, "TYPES_QUERY") and hasattr(kb, "parse_type_results")
 
@@ -569,47 +588,50 @@ def main():
         debug(f"loaded types cache with {len(types_cache)} entries "
               f"from {types_cache_path}")
 
-
-    # Process each mode
+    # Process each discovered split, and within it each mode
     global_type_map: dict[str, str] = {}
 
-    for mode, paths in paths_by_mode.items():
-        print(f"\n--- mode: {mode} ---")
+    for split, paths_by_mode in paths_by_split.items():
+        print(f"\n=== split: {split} ===")
 
-        cache = load_cache(paths["label_cache"])
-        debug(f"loaded label cache with {len(cache)} entries "
-              f"from {paths['label_cache']}")
+        split_type_map: dict[str, str] = {}
 
-        dataset: list = []
-        for inp in paths["inputs"]:
-            print(f"  reading {inp}")
-            dataset.extend(json.loads(inp.read_text(encoding="utf-8")))
-        print(f"  total: {len(dataset)}")
+        for mode, paths in paths_by_mode.items():
+            print(f"\n--- mode: {mode} ---")
 
-        mode_type_map = action_merge_all(
-            args.dataset, args.split, dataset, cache, kb, paths,
-            types_cache=types_cache if has_types else None,
-        )
-        global_type_map.update(mode_type_map)
+            cache = load_cache(paths["label_cache"])
+            debug(f"loaded label cache with {len(cache)} entries "
+                  f"from {paths['label_cache']}")
 
-        # Persist the types cache after each mode so a crash doesn't lose work.
-        if has_types and types_cache_path is not None:
-            save_cache(types_cache, types_cache_path)
+            dataset: list = []
+            for inp in paths["inputs"]:
+                print(f"  reading {inp}")
+                dataset.extend(json.loads(inp.read_text(encoding="utf-8")))
+            print(f"  total: {len(dataset)}")
 
+            mode_type_map = action_merge_all(
+                args.dataset, split, dataset, cache, kb, paths,
+                types_cache=types_cache if has_types else None,
+            )
+            split_type_map.update(mode_type_map)
+            global_type_map.update(mode_type_map)
 
-    # Write the global type label map
-    if has_types and args.split == "train":
-        type_map_path = (
-            data_dir / args.dataset / "generation" / "label_maps"
-            / f"{args.dataset}_{args.split}_type_label_map.json"
-        )
-        type_map_path.parent.mkdir(parents=True, exist_ok=True)
-        type_map_path.write_text(
-            json.dumps(global_type_map, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
-        print(f"\nwrote global type label map "
-              f"({len(global_type_map)} entries) -> {type_map_path}")
+            # Persist the types cache after each mode so a crash doesn't lose work.
+            if has_types and types_cache_path is not None:
+                save_cache(types_cache, types_cache_path)
+
+        if has_types and split == "train":
+            type_map_path = (
+                data_dir / args.dataset / "generation" / "label_maps"
+                / f"{args.dataset}_{split}_type_label_map.json"
+            )
+            type_map_path.parent.mkdir(parents=True, exist_ok=True)
+            type_map_path.write_text(
+                json.dumps(split_type_map, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            print(f"\nwrote type label map for split '{split}' "
+                  f"({len(split_type_map)} entries) -> {type_map_path}")
 
     print("\ndone")
     

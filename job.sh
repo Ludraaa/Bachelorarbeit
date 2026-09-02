@@ -55,9 +55,9 @@ for i in $(seq 1 60); do
 done
 echo "=========================================="
 
-# one time adaption
+# one time adaption (ignore this)
 #python src/temp/adapt_chatkbqa_pred.py --dataset ../OriginalChatKBQA/data/CWQ/generation/merged/CWQ_test.json --preds ../OriginalChatKBQA/Reading/LLaMA-13b/CWQ_Freebase_NQ_lora_epoch10/evaluation_beam/generated_predictions.jsonl --output data/temp.json --kb freebase --type-map ../OriginalChatKBQA/data/CWQ/generation/label_maps/CWQ_train_type_label_map.json
-# result comparison
+# result comparison (debug)
 #python src/temp/compare_results.py \
 #    data/WebQSP/predictions/Llama-2-7b_WebQSP-sparql/evaluated/ChatKBQA.type_map+ChatKBQA.facc1+ChatKBQA.simple+ChatKBQA.neighborhood/WebQSP_test.sparql.json \
 #    data/WQSP_qlever/predictions/Qwen25-7b_WQSP_qlever-sparql/evaluated/ChatKBQA.type_map+ChatKBQA.facc1+ChatKBQA.simple+ChatKBQA.neighborhood/WQSP_qlever_test.sparql.json --by question --a_better_only
@@ -76,27 +76,29 @@ echo "=========================================="
 #python src/generate_predictions.py --config configs/infer/llama.yaml --dataset CWQ --split test --mode sparql --kb freebase --diversity_penalty 1.0 --num_beams 8 #--max_samples 15
 
 
-python src/resolve_predictions.py \
-    --dataset CWQ --split test --mode sparql \
-    --model_id Llama-2-13b_CWQ-sparql \
-    --entity_linkers ChatKBQA.type_map,ChatKBQA.gold_exact,ChatKBQA.gold_simcse,ChatKBQA.facc1 \
-    --predicate_linkers ChatKBQA.simple,ChatKBQA.neighborhood \
-    --kb freebase \
-    --k1_per_pass 500,30 \
-    --k2_per_pass 1,300 \
-    --linker_params '{}' \
-    --debug \
-    --note "official run" \
-    --beam_limits 8
+#python src/resolve_predictions.py \
+#    --dataset CWQ --split test --mode sparql \
+#    --model_id Llama-2-13b_CWQ-sparql \
+#    --entity_linkers ChatKBQA.type_map,ChatKBQA.gold_exact,ChatKBQA.gold_simcse,ChatKBQA.facc1 \
+#    --predicate_linkers ChatKBQA.simple,ChatKBQA.neighborhood \
+#    --kb freebase \
+#    --k1_per_pass 500,30 \
+#    --k2_per_pass 1,300 \
+#    --linker_params '{}' \
+#    --debug \
+#    --note "official run" \
+#    --beam_limits 8
 #    #--item_time_limit_sec 1800
 #    #--max_samples 50
 
-python src/eval_predictions.py \
-    --dataset CWQ --split test --mode sparql \
-    --model_id Llama-2-13b_CWQ-sparql \
-    --entity_linkers ChatKBQA.type_map,ChatKBQA.gold_exact,ChatKBQA.gold_simcse,ChatKBQA.facc1 \
-    --predicate_linkers ChatKBQA.simple,ChatKBQA.neighborhood \
-    --get-live-gold
+#python src/eval_predictions.py \
+#    --dataset CWQ --split test --mode sparql \
+#    --model_id Llama-2-13b_CWQ-sparql \
+#    --entity_linkers ChatKBQA.type_map,ChatKBQA.gold_exact,ChatKBQA.gold_simcse,ChatKBQA.facc1 \
+#    --predicate_linkers ChatKBQA.simple,ChatKBQA.neighborhood \
+#    --get-live-gold
+
+make generate RUN_CONFIG=configs/runs/Freebase/CWQ/sparql.yaml
 
 echo "====================="
 echo "End time: $(date)"
