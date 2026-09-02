@@ -165,10 +165,10 @@ data/CWQ/generation/*
 data/CWQ/sexpr/*
 data/WebQSP/generation/*
 data/WebQSP/sexpr/*
-LLMs/data/WebQSP*
-LLMs/data/CWQ*
 Reading/*
 LLMs/*
+!LLMs/LlmFactory/
+!LLMs/LlmFactory/**
 train_*.txt
 wandb/*
 pred*.txt
@@ -206,4 +206,3 @@ Freebase-Setup/virtuoso_db_corr/
 data2/
 data3/
 data_alt/
-LLMs/data/
