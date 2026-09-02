@@ -68,6 +68,8 @@ COPY Makefile Makefile
 COPY bashrc bashrc
 COPY env.sh env.sh
 COPY SETUP.md SETUP.md
+COPY README.md README.md
+COPY configs/ configs/
 
 COPY src/ /workspace/src
 
