@@ -93,12 +93,18 @@ ENV PYTHONPATH=/workspace
 
 RUN mkdir -p \
     /data \
-    /LLMs/Models \
-    /LLMs/MyModels \
     /workspace/.hf-cache \
     /workspace/.pip-cache
 
+# Copy the repository's LLM directory.
+# Large/variable subdirectories are mounted externally when needed.
 COPY LLMs/ /LLMs/
+
+RUN mkdir -p \
+    /LLMs/data \
+    /LLMs/Models \
+    /LLMs/MyModels && \
+    echo '{}' > /LLMs/data/dataset_info.json
 
 
 # ============================================================
@@ -135,9 +141,10 @@ CMD ["/bin/bash", "--rcfile", "bashrc"]
 #   --name luis-drayer-project \
 #   luis-drayer-project
 
-# With external data and models:
+# With external data, training data, and models:
 # docker run -it \
 #   -v /path/to/data:/data \
+#   -v /path/to/llms-data:/LLMs/data \
 #   -v /path/to/models:/LLMs/Models \
 #   -v /path/to/my-models:/LLMs/MyModels \
 #   --name luis-drayer-project \
