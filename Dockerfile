@@ -1,4 +1,5 @@
 FROM ubuntu:22.04
+
 LABEL maintainer="Luis Drayer <luis.drayer@tutamail.com>"
 
 ARG UID
@@ -58,20 +59,6 @@ RUN java -version && \
 
 
 # ============================================================
-# Python environment
-# ============================================================
-
-COPY requirements.txt /tmp/requirements.txt
-
-RUN python3.11 -m venv /opt/venv && \
-    /opt/venv/bin/python -m pip install --upgrade pip setuptools wheel && \
-    /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt && \
-    rm /tmp/requirements.txt
-
-ENV PATH="/opt/venv/bin:${PATH}"
-
-
-# ============================================================
 # Workspace
 # ============================================================
 
@@ -94,17 +81,49 @@ ENV PYTHONPATH=/workspace
 RUN mkdir -p \
     /data \
     /workspace/.hf-cache \
-    /workspace/.pip-cache
-
-# Copy the repository's LLM directory.
-# Large/variable subdirectories are mounted externally when needed.
-COPY LLMs/ /LLMs/
-
-RUN mkdir -p \
+    /workspace/.pip-cache \
     /LLMs/data \
     /LLMs/Models \
     /LLMs/MyModels && \
     echo '{}' > /LLMs/data/dataset_info.json
+
+
+# ============================================================
+# Python environment
+# ============================================================
+
+COPY requirements.txt /tmp/requirements.txt
+
+RUN python3.11 -m venv /opt/venv && \
+    /opt/venv/bin/python -m pip install --upgrade pip setuptools wheel && \
+    /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt && \
+    rm /tmp/requirements.txt
+
+ENV PATH="/opt/venv/bin:${PATH}"
+
+
+# ============================================================
+# LLaMA Factory
+# ============================================================
+#
+# Install a specific upstream commit instead of vendoring
+# LLaMA Factory into the thesis repository.
+#
+# Commit:
+# 436d26bc28b7c6422c89b63064c5a87e258ed73e
+#
+
+ARG LLAMA_FACTORY_COMMIT=436d26bc28b7c6422c89b63064c5a87e258ed73e
+
+RUN wget -q \
+      "https://github.com/hiyouga/LlamaFactory/archive/${LLAMA_FACTORY_COMMIT}.tar.gz" \
+      -O /tmp/llamafactory.tar.gz && \
+    mkdir /tmp/llamafactory && \
+    tar -xzf /tmp/llamafactory.tar.gz \
+      --strip-components=1 \
+      -C /tmp/llamafactory && \
+    /opt/venv/bin/pip install /tmp/llamafactory && \
+    rm -rf /tmp/llamafactory /tmp/llamafactory.tar.gz
 
 
 # ============================================================
@@ -120,10 +139,7 @@ CMD ["/bin/bash", "--rcfile", "bashrc"]
 # Build
 # ============================================================
 
-# docker build \
-#   --build-arg UID=$(id -u) \
-#   --build-arg GID=$(id -g) \
-#   -t luis-drayer-project .
+# wharfer build --build-arg UID=$(id -u) --build-arg GID=$(id -g) -t luis-drayer-thesis .
 
 
 # ============================================================
@@ -131,21 +147,10 @@ CMD ["/bin/bash", "--rcfile", "bashrc"]
 # ============================================================
 
 # Without external data/models:
-# docker run -it \
-#   --name luis-drayer-project \
-#   luis-drayer-project
+# wharfer run -it --name luis-drayer-thesis luis-drayer-thesis
 
 # With external data:
-# docker run -it \
-#   -v /path/to/data:/data \
-#   --name luis-drayer-project \
-#   luis-drayer-project
+# wharfer run -it -v /path/to/data:/data --name luis-drayer-thesis luis-drayer-thesis
 
 # With external data, training data, and models:
-# docker run -it \
-#   -v /path/to/data:/data \
-#   -v /path/to/llms-data:/LLMs/data \
-#   -v /path/to/models:/LLMs/Models \
-#   -v /path/to/my-models:/LLMs/MyModels \
-#   --name luis-drayer-project \
-#   luis-drayer-project
+# wharfer run -it -v /path/to/data:/data -v /path/to/llms-data:/LLMs/data -v /path/to/models:/LLMs/Models -v /path/to/my-models:/LLMs/MyModels --name luis-drayer-thesis luis-drayer-thesis

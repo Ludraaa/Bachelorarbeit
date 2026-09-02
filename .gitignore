@@ -167,8 +167,6 @@ data/WebQSP/generation/*
 data/WebQSP/sexpr/*
 Reading/*
 LLMs/*
-!LLMs/LlmFactory/
-!LLMs/LlmFactory/**
 train_*.txt
 wandb/*
 pred*.txt
@@ -206,6 +204,3 @@ Freebase-Setup/virtuoso_db_corr/
 data2/
 data3/
 data_alt/
-
-# Large installer bundled with LLaMA Factory
-LLMs/LlmFactory/Miniconda3-latest-Linux-x86_64.sh
