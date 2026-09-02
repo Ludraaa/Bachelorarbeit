@@ -29,22 +29,13 @@ endif
 # Setup
 # ============================================================
 
-.PHONY: hf-model \
-        download-cwq \
+.PHONY: download-cwq \
         download-webqsp \
         download-wwq \
         download-qald7 \
         download-qald10 \
         download-spinach \
         download-lcquad2
-
-hf-model:
-ifeq ($(HF_MODEL),)
-	$(error HF_MODEL is not set. Usage: make hf-model HF_MODEL=<hugging-face-model-name>)
-endif
-	mkdir -p "$(LLM_DIR)/Models/$(subst /,--,$(HF_MODEL))"
-	hf download "$(HF_MODEL)" \
-		--local-dir "$(LLM_DIR)/Models/$(subst /,--,$(HF_MODEL))"
 
 download-cwq:
 	mkdir -p "$(DATA_DIR)/CWQ/origin"
@@ -75,8 +66,6 @@ download-qald7:
 	mkdir -p "$(DATA_DIR)/QALD7/origin"
 	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/qald7/train.jsonl" \
 		-o "$(DATA_DIR)/QALD7/origin/QALD7_train.jsonl"
-	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/qald7/val.jsonl" \
-		-o "$(DATA_DIR)/QALD7/origin/QALD7_dev.jsonl"
 	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/qald7/test.jsonl" \
 		-o "$(DATA_DIR)/QALD7/origin/QALD7_test.jsonl"
 
@@ -84,15 +73,11 @@ download-qald10:
 	mkdir -p "$(DATA_DIR)/QALD10/origin"
 	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/qald10/train.jsonl" \
 		-o "$(DATA_DIR)/QALD10/origin/QALD10_train.jsonl"
-	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/qald10/val.jsonl" \
-		-o "$(DATA_DIR)/QALD10/origin/QALD10_dev.jsonl"
 	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/qald10/test.jsonl" \
 		-o "$(DATA_DIR)/QALD10/origin/QALD10_test.jsonl"
 
 download-spinach:
 	mkdir -p "$(DATA_DIR)/SPINACH/origin"
-	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/spinach/train.jsonl" \
-		-o "$(DATA_DIR)/SPINACH/origin/SPINACH_train.jsonl"
 	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/spinach/val.jsonl" \
 		-o "$(DATA_DIR)/SPINACH/origin/SPINACH_dev.jsonl"
 	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/spinach/test.jsonl" \
@@ -102,8 +87,6 @@ download-lcquad2:
 	mkdir -p "$(DATA_DIR)/LCQuAD2/origin"
 	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/lcquad2-new/train.jsonl" \
 		-o "$(DATA_DIR)/LCQuAD2/origin/LCQuAD2_train.jsonl"
-	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/lcquad2-new/val.jsonl" \
-		-o "$(DATA_DIR)/LCQuAD2/origin/LCQuAD2_dev.jsonl"
 	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/lcquad2-new/test.jsonl" \
 		-o "$(DATA_DIR)/LCQuAD2/origin/LCQuAD2_test.jsonl"
 
