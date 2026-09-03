@@ -24,16 +24,6 @@ _P_IN_SEXPR = re.compile(
 
 _PREFIX_RE = re.compile(r"\bfb(p)?:\s*")
 
-# Freebase-only: determines which candidate URIs are Freebase *types*.
-# Not part of the BaseKB interface -- Wikidata has no equivalent.
-TYPES_QUERY = """
-SELECT ?uri WHERE {{
-    VALUES ?uri {{ {values} }}
-    ?uri <http://rdf.freebase.com/ns/type.object.type>
-         <http://rdf.freebase.com/ns/type.type> .
-}}
-"""
-
 
 class Freebase(BaseKB):
 
@@ -51,35 +41,34 @@ class Freebase(BaseKB):
         }}
     """
 
+    TYPES_QUERY = """
+        SELECT ?uri WHERE {{
+            VALUES ?uri {{ {values} }}
+            ?uri <http://rdf.freebase.com/ns/type.object.type>
+                 <http://rdf.freebase.com/ns/type.type> .
+        }}
+    """
+
     ENTITY_PATTERN = _Q_IN_SEXPR
     RELATION_PATTERN = _P_IN_SEXPR
     ANSWER_URI_PATTERNS = [_MID_RE, _REL_RE]
 
-    TYPES_QUERY = TYPES_QUERY
-
-    # -- Freebase-only extra ------------------------------------------------
-
-    def parse_type_results(self, bindings: list[dict]) -> set[str]:
-        """Return the set of URIs from *bindings* that are Freebase types."""
-        return {row["uri"]["value"] for row in bindings if "uri" in row}
-
-    # -- normalize ------------------------------------------------------------
+    # ---------------------------------------------------------------------------
+    # label insertion
 
     def normalize(self, uri: str) -> str | None:
         """
         Entity MIDs already carry their label (type.object.name), so they are
         returned as-is.
 
-        Relation URIs have no label triple in Freebase; returning None tells
-        insert_labels.fetch_labels() to write cache[uri] = None immediately and
-        skip the SPARQL batch. format_label() then derives their display token
-        from the URI local name.
+        Relation URIs have no label triple in Freebase; returning None to skip the
+        SPARQL batch in insert_labels.py. format_label() then derives the displayed
+        label from the URI local name.
         """
         if _MID_RE.match(uri):
             return uri
         return None
 
-    # -- parse_label_results ----------------------------------------------------
 
     def parse_label_results(self, bindings: list[dict]) -> dict[str, str]:
         preferred: dict[str, str] = {}   # uri -> en label
@@ -96,14 +85,12 @@ class Freebase(BaseKB):
             elif uri not in fallback:
                 fallback[uri] = label
 
-        return {**fallback, **preferred}  # preferred overwrites fallback
+        return {**fallback, **preferred}
 
-    # -- format_label -------------------------------------------------------------
 
     def format_label(self, uri: str, label: str) -> str:
         """
         Entity MID  -> fb:Human_Readable_Label
-                       (falls back to fb:m.0f8l9c if no name was found)
         Relation    -> fbp:domain.type.property
         """
         if _MID_RE.match(uri):
@@ -117,14 +104,14 @@ class Freebase(BaseKB):
 
         return self._format_via_common_prefixes(uri)
 
-    # -- format_relation_label ------------------------------------------------------
 
     def format_relation_label(self, uri: str, label: str) -> str | None:
         if _REL_RE.match(uri):
             return uri[len(_FB_NS):]
         return None
 
-    # -- extract_from_prediction ------------------------------------------------------
+    # ---------------------------------------------------------------------------
+    # prediction extraction and substitution (resolve step)
 
     @staticmethod
     def _scan_token(s: str, start: int) -> str:
@@ -148,6 +135,7 @@ class Freebase(BaseKB):
             i += 1
         return s[start:i]
 
+
     def extract_from_prediction(self, prediction: str) -> tuple[list[str], list[str]]:
         entities, predicates = [], []
         for m in _PREFIX_RE.finditer(prediction):
@@ -159,7 +147,6 @@ class Freebase(BaseKB):
 
         return list(dict.fromkeys(entities)), list(dict.fromkeys(predicates))
 
-    # -- substitute -------------------------------------------------------------------
 
     def substitute(
         self,
@@ -169,16 +156,8 @@ class Freebase(BaseKB):
         expand_uris: bool = True,
     ) -> str:
         """
-        Replace fb:Label -> MID and fbp:path -> relation path, then optionally
+        Replace fb:Label -> MID and fbp:path -> relation path, then
         expand all remaining prefix:local tokens to full URIs.
-
-        NB divergence from wikidata.py: here the entity_map/predicate_map
-        replacements are ALWAYS expanded to full <...> URIs regardless of
-        expand_uris (which only governs the generic COMMON_PREFIXES pass
-        below). wikidata.py instead makes its wd:/wdt: replacements
-        themselves conditional on expand_uris. Preserved as-is from the
-        original modules rather than unified, since it's not clear whether
-        this was intentional.
         """
         for label, mid in entity_map.items():
             replacement = f"<{_FB_NS}{mid}>"
@@ -190,7 +169,7 @@ class Freebase(BaseKB):
 
         if expand_uris:
             # Expand any remaining prefix:local tokens (rdf:, rdfs:, xsd:, ...)
-            # fb/fbp were already handled above and should stay as-is.
+            # fb/fbp were already handled above
             for prefix, base_uri in self.COMMON_PREFIXES.items():
                 if prefix in ("fb", "fbp"):
                     continue

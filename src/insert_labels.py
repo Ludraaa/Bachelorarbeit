@@ -354,38 +354,26 @@ def apply_labels_with_tracking(sexpr: str, cache: dict, kb, entry_id: str = "") 
         uri = match.group(1)
         label = cache.get(uri)
 
-        # Track failures
-        if label is None:
-            # Check why it failed
-            if uri not in cache:
-                reason = "not_in_cache"
-                details = "URI was never fetched from SPARQL"
-            else:
-                reason = "null_label"
-                details = "SPARQL returned no label (normalize returned None or no label found)"
-            
-            if "/entity/Q" in uri or "/entity/P" in uri:
-                log_label_failure(uri, reason, details)
-                if entry_id and entry_id not in _label_failures.get(uri, {}).get("examples", []):
-                    _label_failures.setdefault(uri, {}).setdefault("examples", []).append(entry_id)
-            elif "/prop/" in uri:
-                log_relation_failure(uri, reason, details)
-                if entry_id and entry_id not in _relation_failures.get(uri, {}).get("examples", []):
-                    _relation_failures.setdefault(uri, {}).setdefault("examples", []).append(entry_id)
-            
-            debug(f"  apply_labels: {uri} -> NO LABEL ({reason})")
-            return match.group(0)
-
-        # Success case
-        debug(f"  apply_labels: {uri} -> label={label!r}")
-
         if formatter:
             out = formatter(uri, label or "")
             if out:
+                debug(f"  apply_labels: {uri} -> {out!r} (via formatter, label={label!r})")
                 return out
 
         if label:
             return label.replace(" ", "_")
+
+        # Genuine failure: no label AND no formatter output
+        if label is None:
+            if uri not in cache:
+                reason, details = "not_in_cache", "URI was never fetched from SPARQL"
+            else:
+                reason, details = "null_label", "No label and formatter produced no output"
+            if "/entity/Q" in uri or "/entity/P" in uri:
+                log_label_failure(uri, reason, details)
+            elif "/prop/" in uri:
+                log_relation_failure(uri, reason, details)
+            debug(f"  apply_labels: {uri} -> NO LABEL ({reason})")
 
         return match.group(0)
 

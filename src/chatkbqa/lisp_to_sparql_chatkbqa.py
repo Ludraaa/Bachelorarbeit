@@ -53,14 +53,15 @@ def strip_freebase_prefixes(sexpr: str) -> str:
     sexpr = re.sub(r'\bfbp?:([^\s()]+)', r'\1', sexpr)
     # Tag bare year/date literals with ^^xsd:dateTime
     sexpr = type_tag_bare_date_tokens(sexpr)
-    # lisp_to_nested_expression expects (JOIN not ( JOIN
+    # lisp_to_nested_expression expects "(JOIN" not "( JOIN"
     sexpr = re.sub(r'\(\s+', '(', sexpr)
     sexpr = re.sub(r'\s+\)', ')', sexpr)
     return sexpr
 
 
 # ---------------------------------------------------------------------------
-# Copied from ChatKBQA logic_form_util
+# Copied verbatim from ChatKBQA logic_form_util
+
 def lisp_to_nested_expression(lisp_string: str) -> list:
     """
     Parses a lisp s-expression string into a nested Python list.

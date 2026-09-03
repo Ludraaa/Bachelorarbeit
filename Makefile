@@ -22,6 +22,9 @@ ifneq ($(RUN_CONFIG),)
 
 TRAINING_CONFIG := $(shell $(PYTHON) -c "import yaml; print(yaml.safe_load(open('$(RUN_CONFIG)'))['training_config'])")
 
+ENDPOINT_URL := $(shell $(PYTHON) -c "import yaml; print(yaml.safe_load(open('$(RUN_CONFIG)')).get('endpoint_url', ''))")
+export ENDPOINT_URL
+
 endif
 
 

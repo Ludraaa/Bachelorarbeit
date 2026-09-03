@@ -1,17 +1,7 @@
 """
 Abstract base class for KB-agnostic modules.
 
-Concrete KB modules (freebase.py, wikidata.py) subclass BaseKB and
-implement/override the KB-specific pieces (label queries, URI patterns,
-prefix schemes). Logic that is identical across every KB module we've
-written so far -- prefix-table construction/sorting, sexpr entity/relation
-extraction via a subclass-supplied regex, and answer-URI normalisation via
-an ordered list of subclass-supplied patterns -- lives here so subclasses
-only override it if a KB genuinely needs different behaviour.
-
-Anything whose *logic* differs between Freebase and Wikidata (not just its
-parameters) is left abstract rather than forced into a shared method, to
-avoid silently changing behaviour on either side.
+Concrete KB modules (like freebase.py, wikidata.py) extend BaseKB and implement the KB-specific pieces defined in this file.
 """
 
 from __future__ import annotations
@@ -21,9 +11,7 @@ from abc import ABC, abstractmethod
 
 
 # ---------------------------------------------------------------------------
-# Prefixes shared by every KB module we've written so far. Subclasses
-# provide their own KB_PREFIXES (wd/wdt/... or fb/fbp/ns/...) which get
-# merged on top of these.
+# Shared prefixes. Subclasses additionally provide their own KB_PREFIXES (wd/wdt/... or fb/fbp/ns/...) which get merged on top of these.
 
 BASE_PREFIXES: dict[str, str] = {
     "rdf":       "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
@@ -49,25 +37,21 @@ BASE_PREFIXES: dict[str, str] = {
 
 class BaseKB(ABC):
     """
-    KB-agnostic interface expected by insert_labels.py / resolve_predictions.py.
+    KB-agnostic interface.
 
     Subclasses MUST set as class attributes:
       - KB_PREFIXES:         dict[str, str]    KB-specific prefix -> URI
-      - LABEL_QUERY:          str               SPARQL template, {values}/{language}
-      - ENTITY_PATTERN:       re.Pattern        matches <...>-wrapped entity URIs
-      - RELATION_PATTERN:     re.Pattern        matches <...>-wrapped relation URIs
-      - ANSWER_URI_PATTERNS:  list[re.Pattern]  tried in order by normalise_answer_uri;
-                               the first match's group(1) is the normalised form
+      - LABEL_QUERY:         str               SPARQL template, {values}/{language}
+      - ENTITY_PATTERN:      re.Pattern        matches <...>-wrapped entity URIs
+      - RELATION_PATTERN:    re.Pattern        matches <...>-wrapped predicate URIs
+      - ANSWER_URI_PATTERNS: list[re.Pattern]  tried in order by normalise_answer_uri;
+                             the first match's group(1) is the normalised form
 
     Subclasses MAY set:
-      - LABEL_ENDPOINT_URL:    str | None        SPARQL endpoint this KB's queries must
-                               run against (e.g. LABEL_QUERY/TYPES_QUERY rely on a
-                               service extension only one endpoint implements).
-                               None (the default) means "no opinion" -- insert_labels.py
-                               falls back to its own ENDPOINT_URL/$ENDPOINT_URL default
-                               in that case. Only override this if the KB's queries are
-                               genuinely endpoint-specific, not just "this is what we
-                               usually point at".
+      - LABEL_ENDPOINT_URL: str | None        SPARQL endpoint this KB's queries must
+                            run against (if, for example, LABEL_QUERY/TYPES_QUERY rely on a
+                            service extension only one endpoint implements).
+                            Runs on the endpoint specified in the run config if not explicitly set.
 
     Subclasses MUST implement:
       - normalize(uri)
@@ -91,27 +75,31 @@ class BaseKB(ABC):
     def __init__(self) -> None:
         self.COMMON_PREFIXES: dict[str, str] = {**BASE_PREFIXES, **self.KB_PREFIXES}
         # Longest base URI first, so the most specific prefix wins if two
-        # prefixes' URIs happen to be prefixes of one another.
+        # prefix URIs happen to be prefixes of each another.
         self._prefix_lookup: list[tuple[str, str]] = sorted(
             self.COMMON_PREFIXES.items(), key=lambda kv: len(kv[1]), reverse=True
         )
 
-    # -- shared: sexpr URI extraction ---------------------------------------
+    # ---------------------------------------------------------------------------
+    # Shared behaviour
+
+    # extraction from sexpr
 
     def extract_entities(self, sexpr: str) -> list[str]:
-        """Return all entity URIs present in *sexpr* (wrapped in <...>)."""
+        """Return all entity URIs present in sexpr (wrapped in <...>)."""
         return list(set(self.ENTITY_PATTERN.findall(sexpr)))
 
     def extract_relations(self, sexpr: str) -> list[str]:
-        """Return all relation/property URIs present in *sexpr* (wrapped in <...>)."""
+        """Return all predicate URIs present in sexpr (wrapped in <...>)."""
         return list(set(self.RELATION_PATTERN.findall(sexpr)))
 
-    # -- shared: answer URI normalisation ------------------------------------
+
+    # answer normalization
 
     def normalise_answer_uri(self, uri: str) -> str:
         """
-        Strip a full URI down to its KB-local identifier by trying each of
-        ANSWER_URI_PATTERNS in order and returning the first match's group(1).
+        Strip a full URI down to the KB-local identifier. Tries all defined
+        ANSWER_URI_PATTERNS in order and returns the first match's group(1).
         Falls back to whatever follows the last "/" if nothing matches.
         """
         for pattern in self.ANSWER_URI_PATTERNS:
@@ -120,16 +108,16 @@ class BaseKB(ABC):
                 return m.group(1)
         return uri.rsplit("/", 1)[-1]
 
-    # -- shared helper available to format_label() implementations -----------
+
+    # fallback for format_labels()
 
     def _format_via_common_prefixes(self, uri: str) -> str:
         """
         Fallback used once KB-specific entity/relation checks in
         format_label() have failed: map uri -> "prefix:local" using
-        COMMON_PREFIXES, falling back to the bare local name. This is the
-        exact logic freebase.py's generic branch used. wikidata.py additionally
-        prefers a fetched label over the local name in this fallback, so it
-        does not reuse this helper as-is -- see wikidata.py's format_label.
+        COMMON_PREFIXES, falling back to the bare local name. This is
+        used intentionally by freebase.py, as predicates do not have
+        labels in freebase, and are instead derived from the uri itself.
         """
         for prefix, base in self._prefix_lookup:
             if uri.startswith(base):
@@ -137,7 +125,10 @@ class BaseKB(ABC):
                 return f"{prefix}:{local}" if local else ""
         return ""
 
-    # -- KB-specific: must be implemented by subclasses -----------------------
+    # ---------------------------------------------------------------------------
+    # KB-specific behaviour
+
+    # label insertion
 
     @abstractmethod
     def normalize(self, uri: str) -> str | None:
@@ -154,6 +145,9 @@ class BaseKB(ABC):
     @abstractmethod
     def format_relation_label(self, uri: str, label: str) -> str | None:
         """Format uri for use as a gold_relation_map value."""
+
+
+    # resolve
 
     @abstractmethod
     def extract_from_prediction(self, prediction: str) -> tuple[list[str], list[str]]:

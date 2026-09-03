@@ -926,6 +926,7 @@ def main():
 
     global ENDPOINT_URL
     ENDPOINT_URL = args.endpoint_url
+    os.environ["ENDPOINT_URL"] = args.endpoint_url
 
     entity_linker_ids = [s.strip() for s in args.entity_linkers.split(",") if s.strip()]
     predicate_linker_ids = [s.strip() for s in args.predicate_linkers.split(",") if s.strip()]

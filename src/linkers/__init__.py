@@ -5,13 +5,9 @@ from src.utils.kb import load_kb_module
 
 def load_entity_linker(name: str, **overrides) -> BaseEntityLinker:
     """
-    Auto-discover and instantiate entity linker by name.
+    Discover and instantiate entity linker by name.
     Looks for src/linkers/entity/{name}.py
     Expects the file to contain a class named Linker(BaseEntityLinker).
-
-    Any **overrides are forwarded to the Linker's constructor, letting
-    callers (e.g. --linker_params on the CLI) override defaults like
-    thresholds or top_k without editing the linker file itself.
     """
     try:
         module = importlib.import_module(f"src.linkers.entity.{name}")
@@ -45,13 +41,9 @@ def load_entity_linker(name: str, **overrides) -> BaseEntityLinker:
 
 def load_predicate_linker(name: str, **overrides) -> BasePredicateLinker:
     """
-    Auto-discover and instantiate predicate linker by name.
+    Discover and instantiate predicate linker by name.
     Looks for src/linkers/predicate/{name}.py
     Expects the file to contain a class named Linker(BasePredicateLinker).
-
-    Any **overrides are forwarded to the Linker's constructor, letting
-    callers (e.g. --linker_params on the CLI) override defaults like
-    thresholds or top_k without editing the linker file itself.
     """
     try:
         module = importlib.import_module(f"src.linkers.predicate.{name}")
@@ -86,8 +78,6 @@ def load_predicate_linker(name: str, **overrides) -> BasePredicateLinker:
 def load_extractor(kb: str):
     """
     Returns the extract_from_prediction bound method for the given KB.
-    Loading/instantiation is delegated to src.utils.kb.load_kb_module so
-    there's a single place that knows how to find and construct a KB class.
     """
     instance = load_kb_module(kb)
 
@@ -103,8 +93,6 @@ def load_extractor(kb: str):
 def load_substitute(kb: str):
     """
     Returns the substitute bound method for the given KB.
-    Loading/instantiation is delegated to src.utils.kb.load_kb_module so
-    there's a single place that knows how to find and construct a KB class.
     """
     instance = load_kb_module(kb)
 

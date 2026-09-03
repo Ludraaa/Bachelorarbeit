@@ -85,5 +85,84 @@
     "exact_match": 0.3043,
     "assignment_f1": 0.3549,
     "hit1": 0.4348
+  },
+  {
+    "timestamp": "2026-09-02T20:06:01.660411+00:00",
+    "resolved_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/CWQ/predictions/Llama-2-13b_CWQ-sparql/resolved/sparql/CWQ_test.sparql.json",
+    "evaluated_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/CWQ/predictions/Llama-2-13b_CWQ-sparql/evaluated/sparql/CWQ_test.sparql.json",
+    "eval_endpoint": "http://localhost:3001/sparql",
+    "gold_answer_source": "live",
+    "resolve_note": "official run",
+    "eval_note": "official run",
+    "dataset": "CWQ",
+    "split": "test",
+    "model_id": "Llama-2-13b_CWQ-sparql",
+    "kb": "freebase",
+    "mode": "sparql",
+    "run_name": "sparql",
+    "linker_combo_id": "ChatKBQA.type_map+ChatKBQA.facc1+ChatKBQA.simple+ChatKBQA.neighborhood",
+    "entity_linker": [
+      "ChatKBQA.type_map",
+      "ChatKBQA.facc1"
+    ],
+    "entity_linker_params": {
+      "ChatKBQA.type_map": {},
+      "ChatKBQA.facc1": {
+        "top_k": 50,
+        "facc_threshold": 0.001
+      }
+    },
+    "predicate_linkers": [
+      "ChatKBQA.simple",
+      "ChatKBQA.neighborhood"
+    ],
+    "predicate_linker_params": {
+      "ChatKBQA.simple": {},
+      "ChatKBQA.neighborhood": {
+        "ke": 15,
+        "te": 0.01,
+        "limit": 10000,
+        "timeout": 300,
+        "model_name": "princeton-nlp/unsup-simcse-roberta-large"
+      }
+    },
+    "beam_limits": [
+      8,
+      8
+    ],
+    "k1_per_pass": [
+      500,
+      30
+    ],
+    "t1_per_pass": [
+      0.0,
+      0.0
+    ],
+    "k2_per_pass": [
+      1,
+      300
+    ],
+    "t2_per_pass": [
+      0.0,
+      0.0
+    ],
+    "pass_counts": {
+      "ChatKBQA.simple": 0,
+      "ChatKBQA.neighborhood": 0
+    },
+    "resolve_endpoint": "http://localhost:3001/sparql",
+    "resolve_timestamp": "2026-09-02T20:04:50.151111+00:00",
+    "num_items": 3,
+    "num_stale": 0,
+    "stale_pct": 0.0,
+    "num_scored": 3,
+    "num_executable": 0,
+    "executable_pct": 0.0,
+    "num_exec_error": 0,
+    "num_empty_pred": 0,
+    "num_with_gold": 3,
+    "exact_match": 0.0,
+    "assignment_f1": 0.0,
+    "hit1": 0.0
   }
 ]

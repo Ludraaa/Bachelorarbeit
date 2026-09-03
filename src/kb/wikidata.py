@@ -16,46 +16,10 @@ _P_IN_SEXPR = re.compile(
     r"<(http://www\.wikidata\.org/(?:entity/P\d+|prop(?:/[^/]+)?/P\d+))>"
 )
 
-# All predicate-bearing prefixes -- truthy (wdt) plus every reification
-# slot a statement can appear under. A PID resolves the same way regardless
-# of which of these it's tagged with; only the base URI it gets reattached
-# to (in substitute()) differs. Sorted longest-first purely so the regex
-# alternation below doesn't backtrack through short prefixes first.
 PREDICATE_PREFIXES: tuple[str, ...] = tuple(
     sorted(("wdt", "p", "ps", "pq", "psv", "psn", "pqv", "pqn", "pr", "prv", "prn"),
            key=len, reverse=True)
 )
-
-# -- extraction: grammar-driven label boundaries -----------------------------
-#
-# Property paths only ever compose predicates, never entities, so entity
-# consumption never needs path-operator lookahead -- '/','*','+' etc. after
-# `wd:` are always genuine label content (e.g. "AC/DC").
-#
-# Predicate labels, however, *can* legitimately contain reserved characters
-# (confirmed against the real Wikidata label cache: P706 "located in/on
-# physical feature" -> contains '/'; P527 "has part(s)" -> contains '(' ')'),
-# so a flat stop-character class is wrong -- it truncates real, in-scope
-# properties. A vocabulary lookup is also wrong on its own: the model can
-# legitimately predict predicates absent from any training-time label cache
-# (that's the whole point of testing generalization), so falling back to a
-# broken heuristic for unseen predicates would defeat the fix where it
-# matters most.
-#
-# The disambiguation that actually works is grammar, not a character class
-# or a lookup: genuine SPARQL property-path composition always re-prefixes
-# each atom ('wdt:X/wdt:Y', '(wdt:X)*', '^wdt:X'). A '/', '(', '|' is a path
-# operator only when what follows it is itself another prefixed predicate
-# reference; otherwise it's label content, regardless of whether that label
-# was ever seen in training. This needs no vocabulary and handles unseen
-# predicates identically to seen ones.
-#
-# The one shape this can't resolve from syntax alone: a label whose own
-# text ends in '.', ',', or ';' immediately before whitespace is
-# indistinguishable from a real SPARQL terminator glued on with no space.
-# That residual is treated as structural (the common case), which only
-# matters for labels that both contain trailing punctuation AND sit at a
-# token boundary with no following space -- narrow enough to accept.
 
 _PATH_PREFIX_LOOKAHEAD = re.compile(
     r"^\^?(?:" + "|".join(PREDICATE_PREFIXES) + r"):"
@@ -64,11 +28,9 @@ _PATH_PREFIX_LOOKAHEAD = re.compile(
 
 def _looks_like_path_continuation(text: str, pos: int) -> bool:
     """
-    True if text[pos:] starts with (optionally through one '(') another
-    prefixed predicate reference -- i.e. this position is a genuine
-    property-path separator/group-opener, not label content. Real path
-    composition always re-prefixes each atom; label punctuation never
-    does, so this needs no knowledge of what the label actually is.
+    True if text[pos:] is a SPARQL path symbol, not label content.
+    Path composition always re-prefixes each atom, so a prefix right
+    after the symbol means syntax; anything else means label text.
     """
     rest = text[pos:]
     if rest.startswith("("):
@@ -87,20 +49,20 @@ def _consume_predicate_label(text: str, start: int) -> str:
             break
 
         if ch in "*+^":
-            break  # quantifiers/inverse -- essentially never real label content
+            break  # quantifiers/inverse
 
         if ch in "/|":
             if _looks_like_path_continuation(text, i + 1):
                 break  # genuine path separator
             i += 1
-            continue  # label content, e.g. "located_in/on_physical_feature"
+            continue  # label content, like "located_in/on_physical_feature"
 
         if ch == "(":
             if depth == 0 and _looks_like_path_continuation(text, i + 1):
-                break  # genuine path-group opener, e.g. "/(wdt:subclass_of)*"
+                break  # genuine path-group opener, like "/(wdt:subclass_of)*"
             depth += 1
             i += 1
-            continue  # label content, e.g. "has_part(s)"
+            continue  # label content, like "has_part(s)"
 
         if ch == ")":
             if depth == 0:
@@ -112,9 +74,7 @@ def _consume_predicate_label(text: str, start: int) -> str:
         if ch in ".,;":
             # A label's own trailing punctuation and a SPARQL terminator
             # glued on with no space look identical from the string alone.
-            # Treat as structural only when directly followed by
-            # whitespace/end (not embedded mid-word), so
-            # "Ethnologue.com_code" keeps its dot.
+            # Treat as structural only when directly followed by whitespace
             nxt = text[i + 1] if i + 1 < n else ""
             if nxt == "" or nxt in " \t\n":
                 break
@@ -128,9 +88,8 @@ def _consume_predicate_label(text: str, start: int) -> str:
 
 def _consume_entity_label(text: str, start: int) -> str:
     # Entities never sit in path-expression position, so no operator
-    # lookahead is needed -- '/', '*', '+' etc. always pass through as
-    # label content. Only paren-balance and the same trailing-punctuation
-    # rule apply.
+    # lookahead is needed. '/', '*', '+' etc. always pass through as
+    # label content.
     depth = 0
     i = start
     n = len(text)
@@ -158,32 +117,6 @@ _PREDICATE_ANCHOR_RE = re.compile(
 )
 
 
-# Wikidata-only: approximate analogue of Freebase's TYPES_QUERY.
-#
-# NOT an exact parity port -- Freebase has a small closed set of reified
-# type.type entities, so "?uri type.object.type type.type" is an exact,
-# cheap membership check. Wikidata has no equivalent closed "class" triple:
-# whether something functions as a class is emergent from being used as
-# the object of a P31 ("instance of") statement. This query treats "has at
-# least one P31 instance" as "is a type", which is a reasonable proxy but
-# can misfire (e.g. individuals that are themselves occasionally used as a
-# P31 value in modeling edge cases). Validate against your actual
-# candidate set before relying on it the way the Freebase pass does.
-TYPES_QUERY = """
-SELECT DISTINCT ?uri WHERE {{
-    VALUES ?uri {{ {values} }}
-
-    {{
-        ?instance <http://www.wikidata.org/prop/direct/P31> ?uri .
-    }}
-    UNION
-    {{
-        ?subclass <http://www.wikidata.org/prop/direct/P279> ?uri .
-    }}
-}}
-"""
-
-
 class Wikidata(BaseKB):
 
     KB_PREFIXES = {
@@ -201,8 +134,6 @@ class Wikidata(BaseKB):
         "prn":      "http://www.wikidata.org/prop/reference/value-normalized/",
         "wikibase": "http://wikiba.se/ontology#",
     }
-
-    #LABEL_ENDPOINT_URL = "https://query.wikidata.org/sparql"
 
     #   0. {language}
     #   1. "mul" -- language-neutral fallback label
@@ -222,21 +153,36 @@ class Wikidata(BaseKB):
         ORDER BY ?uri ?priority
     """
 
+    # Wikidata has no specified types. Define an entity as a type, if either:
+    # 1. Another entity is P31 ("instance of") the entity
+    # 2. Another entity is P279 ("subclass of") the entity
+    # This is not perfect (even a single use as instance or subclass of -> is type), but good enough
+    TYPES_QUERY = """
+        SELECT DISTINCT ?uri WHERE {{
+            VALUES ?uri {{ {values} }}
+
+            {{
+                ?instance <http://www.wikidata.org/prop/direct/P31> ?uri .
+            }}
+            UNION
+            {{
+                ?subclass <http://www.wikidata.org/prop/direct/P279> ?uri .
+            }}
+        }}
+    """
+
     ENTITY_PATTERN = _Q_IN_SEXPR
     RELATION_PATTERN = _P_IN_SEXPR
     ANSWER_URI_PATTERNS = [_QP_PATTERN, _PID_PATTERN]
     PREDICATE_PREFIXES = PREDICATE_PREFIXES
 
-    TYPES_QUERY = TYPES_QUERY
-
-    # -- normalize --------------------------------------------------------------
+    # ---------------------------------------------------------------------------
+    # label insertion
 
     def normalize(self, uri: str) -> str | None:
         """
-        Map any Wikidata URI to the canonical entity URI that carries its
-        label. Property URIs (prop/direct/P31, etc.) are mapped to
-        entity/P31 because rdfs:label lives on the entity URI.
-        Returns None for unrecognised URIs (skipped silently by insert_labels.py).
+        Entities carry their own label, but a predicate label lives on the
+        predicate's entity instead.
         """
         pid_match = _PID_PATTERN.match(uri)
         if pid_match:
@@ -245,12 +191,10 @@ class Wikidata(BaseKB):
             return uri  # already canonical
         return None
 
-    # -- parse_label_results ---------------------------------------------------------
 
     def parse_label_results(self, bindings: list[dict]) -> dict[str, str]:
         """
-        Parse results from LABEL_QUERY. Takes the first label per URI based on
-        the SPARQL ordering (target language > English).
+        Takes the first label per URI based on the SPARQL ordering in the query.
         """
         result: dict[str, str] = {}
         
@@ -261,7 +205,7 @@ class Wikidata(BaseKB):
             if not uri or not label:
                 continue
             
-            # Only take the first label per URI (SPARQL already ordered them)
+            # Only take the first label per URI
             if uri not in result:
                 entity_id = uri.rsplit("/", 1)[-1]
                 # Skip if label is just the entity ID
@@ -269,8 +213,6 @@ class Wikidata(BaseKB):
                     result[uri] = label
         
         return result
-
-    # -- format_label -----------------------------------------------------------------
 
     def format_label(self, uri: str, label: str) -> str:
         # case: entity
@@ -281,8 +223,7 @@ class Wikidata(BaseKB):
         is_property = "/entity/P" in uri or "/prop/" in uri
         slug = label.replace(" ", "_").lower() if (label and is_property) else (label or "")
 
-        # case: COMMON_PREFIXES -- prefers the fetched label/slug over the
-        # bare local name (unlike freebase.py's equivalent fallback).
+        # case: COMMON_PREFIXES - prefer the fetched label
         for prefix, base in self._prefix_lookup:
             if uri.startswith(base):
                 local = uri[len(base):]
@@ -291,38 +232,15 @@ class Wikidata(BaseKB):
 
         return ""
 
-    # -- format_relation_label ----------------------------------------------------------
 
     def format_relation_label(self, uri: str, label: str) -> str | None:
         return label
 
-    # -- extract_from_prediction ----------------------------------------------------------
+
+    # ---------------------------------------------------------------------------
+    # prediction extraction and substitution (resolve step)
 
     def extract_from_prediction(self, prediction: str) -> tuple[list[str], list[str]]:
-        """
-        entities: wd:-tagged tokens only (entities are never reified).
-        Consumed with paren-balance tracking so labels like
-        'Georgia_(country)' or 'AC/DC' survive intact -- property paths
-        never apply to entities, so path-operator characters after `wd:`
-        are always genuine label content.
-
-        predicates: every PREDICATE_PREFIXES-tagged token, regardless of
-        which reification slot it's in -- wdt:some_label, p:some_label, and
-        pq:some_label are all just "some_label" needing the same label->PID
-        lookup, so they're pooled into one flat, deduped predicate list.
-        Consumed with grammar-based path-operator lookahead rather than a
-        vocabulary or a flat stop-character set: real predicate labels can
-        themselves contain '/' and '(' (e.g. "located in/on physical
-        feature", "has part(s)"), so a character class alone would
-        truncate valid, in-scope properties, and a vocabulary lookup would
-        fall back to that same broken truncation for any predicate the
-        model predicts that wasn't seen during training -- exactly the
-        generalization case this pipeline is meant to handle. Instead, a
-        path-operator character only ends the label when what follows it
-        is itself another prefixed predicate reference (genuine SPARQL
-        path composition always re-prefixes each atom); otherwise it's
-        treated as label content, seen or unseen alike.
-        """
         entities = []
         for m in _ENTITY_ANCHOR_RE.finditer(prediction):
             label = _consume_entity_label(prediction, m.end())
@@ -337,7 +255,6 @@ class Wikidata(BaseKB):
 
         return list(dict.fromkeys(entities)), list(dict.fromkeys(predicates))
 
-    # -- substitute ------------------------------------------------------------------------
 
     def substitute(
         self,
@@ -348,18 +265,10 @@ class Wikidata(BaseKB):
     ) -> str:
         """
         Replace wd:Label -> QID, and {prefix}:Label -> PID for every
-        occurrence of that label under any PREDICATE_PREFIXES prefix (a
-        given label may legitimately appear under more than one prefix in
-        the same prediction, e.g. "p:some_label ... ps:some_label ...") --
-        then optionally expand all remaining prefix:local tokens to full
-        URIs using COMMON_PREFIXES.
-
-        NB divergence from freebase.py: here the wd:/predicate-prefix
-        replacements themselves are conditional on expand_uris. See the
-        note in freebase.py's substitute() for the corresponding divergence.
+        occurrence of that label under any PREDICATE_PREFIXES prefix.
         """
         for label, qid in entity_map.items():
-            replacement = f"<{_WD_NS}{qid}>" if expand_uris else f"wd:{qid}"
+            replacement = f"<{_WD_NS}{qid}>"
             prediction = prediction.replace(f"wd:{label}", replacement)
 
         for label, pid in predicate_map.items():
@@ -368,17 +277,11 @@ class Wikidata(BaseKB):
                 if token not in prediction:
                     continue
                 base_uri = self.COMMON_PREFIXES[prefix]
-                replacement = f"<{base_uri}{pid}>" if expand_uris else f"{prefix}:{pid}"
+                replacement = f"<{base_uri}{pid}>"
                 prediction = prediction.replace(token, replacement)
 
         if expand_uris:
-            # Expand any remaining prefix:local tokens (rdf:, rdfs:, xsd:,
-            # wikibase:, ...). wd: and every PREDICATE_PREFIXES entry were
-            # already handled above via linked-label substitution and must
-            # stay excluded here -- an unresolved wdt:/p:/pq:/... token
-            # reaching this generic loop would otherwise get glued
-            # straight onto its base URI as if the label text were already
-            # a valid PID, silently minting a URI that doesn't exist.
+            # Expand any remaining prefix:local tokens (rdf:, rdfs:, xsd:, wikibase:, ...).
             skip = {"wd", *self.PREDICATE_PREFIXES}
             for prefix, base_uri in self.COMMON_PREFIXES.items():
                 if prefix in skip:
@@ -387,9 +290,3 @@ class Wikidata(BaseKB):
                 prediction = pattern.sub(lambda m, b=base_uri: f"<{b}{m.group(1)}>", prediction)
 
         return prediction
-
-    # -- Wikidata-only extra: approximate analogue of Freebase's TYPES_QUERY --
-
-    def parse_type_results(self, bindings: list[dict]) -> set[str]:
-        """Return the set of URIs from *bindings* that are used as a class."""
-        return {row["uri"]["value"] for row in bindings if "uri" in row}

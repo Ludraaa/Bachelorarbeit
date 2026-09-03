@@ -204,3 +204,4 @@ Freebase-Setup/virtuoso_db_corr/
 data2/
 data3/
 data_alt/
+env_cluster.sh

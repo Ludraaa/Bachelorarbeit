@@ -12,14 +12,6 @@ class Linker(BaseEntityLinker):
     Wikidata entity linker: candidate generation via the public
     wbsearchentities API, reranked with a SimCSE cross-encoder-style
     lexical+semantic hybrid score.
-
-    No Freebase counterpart to diff against -- this is the Wikidata-only
-    analogue of the type_map -> gold -> SimCSE -> FACC1 cascade's
-    "generic surface-form fallback" step (FACC1's role on the Freebase
-    side). FACC1 itself is not portable: it depends on a Freebase-specific
-    prebuilt mention index (entity_list_file/surface_map_file), which has
-    no Wikidata equivalent, so this hits the live API instead of a local
-    index.
     """
 
     def __init__(
@@ -57,16 +49,6 @@ class Linker(BaseEntityLinker):
     # Candidate retrieval
 
     def _fetch_candidates(self, label: str) -> list[dict]:
-        """
-        NB divergence from the original draft: wrapped in call_with_retry
-        (matching the retry pattern used by the label_search and
-        neighborhood predicate linkers) since this hits a live external
-        API on every uncached label -- a bare requests.get() here means a
-        single transient network hiccup fails the whole label instead of
-        retrying, unlike every other network-calling linker in the
-        pipeline.
-        """
-
         def _do_request():
             resp = requests.get(
                 "https://www.wikidata.org/w/api.php",
@@ -125,7 +107,7 @@ class Linker(BaseEntityLinker):
         elif m in label or label in m:
             score += 0.12
 
-        # alias-ish match
+        # alias match
         elif re.sub(r"\s+", "", m) == re.sub(r"\s+", "", label):
             score += 0.15
 
@@ -160,14 +142,6 @@ class Linker(BaseEntityLinker):
                 self._lexical_boost(mention_clean, c, desc)
             )
 
-            # wbsearchentities' own result order is a real relevance/
-            # popularity signal (roughly: incoming-link / sitelink weight)
-            # that the semantic+lexical terms alone can't recover once
-            # several candidates share an identical label -- e.g. "Jamaica"
-            # the country vs. "Jamaica" the 1957 musical both get the same
-            # exact-match lexical boost and near-identical SimCSE scores
-            # against a short description. Rather than discard that
-            # ordering, fold it in as a decaying prior.
             rank_scores.append(1.0 / (idx + 1))
 
         embs = self.model.encode(
