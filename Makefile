@@ -2,17 +2,7 @@
 # Configuration
 # ============================================================
 
-PYTHON ?= python
-
-# Hugging Face model to download.
-#
-# Usage:
-#   make hf-model HF_MODEL=meta-llama/Llama-2-7b-hf
-#
-HF_MODEL ?=
-
-HF_MODEL_DIR = $(LLM_DIR)/Models/$(subst /,--,$(HF_MODEL))
-
+PYTHON ?= python3
 
 # ============================================================
 # Pipeline configuration
@@ -138,3 +128,32 @@ resolve:
 
 eval:
 	$(PYTHON) src/eval_predictions.py --run_config $(RUN_CONFIG)
+
+# ============================================================
+# Demos (Wikidata / Qald7)
+# ============================================================
+
+.PHONY: demo_qald7_full demo_qald7_no_train demo_qald7_no_train_no_generate
+
+QALD7_DEMO_CONFIG := configs/runs/Wikidata/Qald7/grisp.yaml
+QALD7_DEMO_TRAINING_CONFIG := $(shell $(PYTHON) -c "import yaml; print(yaml.safe_load(open('$(QALD7_DEMO_CONFIG)'))['training_config'])")
+
+demo_qald7_full: download-qald7
+	$(PYTHON) src/sparql_to_sexpr.py --run_config $(QALD7_DEMO_CONFIG)
+	$(PYTHON) src/insert_labels.py --run_config $(QALD7_DEMO_CONFIG)
+	$(PYTHON) src/prepare_llm_data.py --run_config $(QALD7_DEMO_CONFIG)
+	lmf train $(QALD7_DEMO_TRAINING_CONFIG)
+	$(PYTHON) src/generate_predictions.py --run_config $(QALD7_DEMO_CONFIG)
+	$(PYTHON) src/resolve_predictions.py --run_config $(QALD7_DEMO_CONFIG)
+	$(PYTHON) src/eval_predictions.py --run_config $(QALD7_DEMO_CONFIG)
+
+demo_qald7_no_train: download-qald7
+	$(PYTHON) src/sparql_to_sexpr.py --run_config $(QALD7_DEMO_CONFIG)
+	$(PYTHON) src/insert_labels.py --run_config $(QALD7_DEMO_CONFIG)
+	$(PYTHON) src/generate_predictions.py --run_config $(QALD7_DEMO_CONFIG)
+	$(PYTHON) src/resolve_predictions.py --run_config $(QALD7_DEMO_CONFIG)
+	$(PYTHON) src/eval_predictions.py --run_config $(QALD7_DEMO_CONFIG)
+
+demo_qald7_no_train_no_generate:
+	$(PYTHON) src/resolve_predictions.py --run_config $(QALD7_DEMO_CONFIG)
+	$(PYTHON) src/eval_predictions.py --run_config $(QALD7_DEMO_CONFIG)
