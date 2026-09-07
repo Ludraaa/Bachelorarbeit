@@ -38,7 +38,8 @@ endif
         download-qald7 \
         download-qald10 \
         download-spinach \
-        download-lcquad2
+        download-lcquad2 \
+		download-wdql
 
 download-cwq:
 	mkdir -p "$(DATA_DIR)/CWQ/origin"
@@ -66,32 +67,41 @@ download-wwq:
 		-o "$(DATA_DIR)/WWQ/origin/WWQ_test.jsonl"
 
 download-qald7:
-	mkdir -p "$(DATA_DIR)/QALD7/origin"
+	mkdir -p "$(DATA_DIR)/Qald7/origin"
 	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/qald7/train.jsonl" \
-		-o "$(DATA_DIR)/QALD7/origin/QALD7_train.jsonl"
+		-o "$(DATA_DIR)/Qald7/origin/Qald7_train.jsonl"
 	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/qald7/test.jsonl" \
-		-o "$(DATA_DIR)/QALD7/origin/QALD7_test.jsonl"
+		-o "$(DATA_DIR)/Qald7/origin/Qald_test.jsonl"
 
 download-qald10:
-	mkdir -p "$(DATA_DIR)/QALD10/origin"
+	mkdir -p "$(DATA_DIR)/Qald10/origin"
 	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/qald10/train.jsonl" \
-		-o "$(DATA_DIR)/QALD10/origin/QALD10_train.jsonl"
+		-o "$(DATA_DIR)/Qald10/origin/Qald10_train.jsonl"
 	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/qald10/test.jsonl" \
-		-o "$(DATA_DIR)/QALD10/origin/QALD10_test.jsonl"
+		-o "$(DATA_DIR)/Qald10/origin/Qald10_test.jsonl"
 
 download-spinach:
-	mkdir -p "$(DATA_DIR)/SPINACH/origin"
+	mkdir -p "$(DATA_DIR)/Spinach/origin"
 	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/spinach/val.jsonl" \
-		-o "$(DATA_DIR)/SPINACH/origin/SPINACH_dev.jsonl"
+		-o "$(DATA_DIR)/Spinach/origin/Spinach_dev.jsonl"
 	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/spinach/test.jsonl" \
-		-o "$(DATA_DIR)/SPINACH/origin/SPINACH_test.jsonl"
+		-o "$(DATA_DIR)/Spinach/origin/Spinach_test.jsonl"
 
 download-lcquad2:
-	mkdir -p "$(DATA_DIR)/LCQuAD2/origin"
+	mkdir -p "$(DATA_DIR)/Lcquad2/origin"
 	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/lcquad2-new/train.jsonl" \
-		-o "$(DATA_DIR)/LCQuAD2/origin/LCQuAD2_train.jsonl"
+		-o "$(DATA_DIR)/Lcquad2/origin/Lcquad2_train.jsonl"
 	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/lcquad2-new/test.jsonl" \
-		-o "$(DATA_DIR)/LCQuAD2/origin/LCQuAD2_test.jsonl"
+		-o "$(DATA_DIR)/Lcquad2/origin/Lcquad2_test.jsonl"
+
+download-wdql:
+	mkdir -p "$(DATA_DIR)/WDQL/origin"
+	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/wdql/train.jsonl" \
+		-o "$(DATA_DIR)/WDQL/origin/WDQL_train.jsonl"
+	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/wdql/val.jsonl" \
+		-o "$(DATA_DIR)/WDQL/origin/WDQL_dev.jsonl"
+	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/wdql/test.jsonl" \
+		-o "$(DATA_DIR)/WDQL/origin/WDQL_test.jsonl"
 
 # ============================================================
 # Pipeline

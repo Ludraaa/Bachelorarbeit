@@ -41,13 +41,7 @@ class BoundedCache(OrderedDict):
 class Linker(BasePredicateLinker):
     """
     Wikidata predicate linker: direct rdfs:label substring/prefix/exact
-    match against every wikibase:directClaim property, scored by match
-    tightness. This is the Wikidata replacement for the Freebase
-    passthrough predicate linker (which just echoes fbp:-tagged tokens
-    straight through with confidence 1.0, since ChatKBQA's Freebase
-    predictions already emit canonical relation paths) -- Wikidata
-    predictions instead emit human-readable property text that has to be
-    resolved to a PID via an actual lookup, hence the SPARQL query.
+    match against every wikibase:directClaim property, scored by match.
     """
 
     def __init__(self, k: int = 5):

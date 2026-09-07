@@ -1,18 +1,18 @@
 [
   {
-    "timestamp": "2026-09-02T04:58:50.172238+00:00",
-    "resolved_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/Qald7/predictions/Qwen25-7b_Qald7-sparql/resolved/sparql/Qald7_test.sparql.json",
-    "evaluated_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/Qald7/predictions/Qwen25-7b_Qald7-sparql/evaluated/sparql/Qald7_test.sparql.json",
+    "timestamp": "2026-09-03T19:45:20.676884+00:00",
+    "resolved_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/Qald7/predictions/Qwen25-7b_Qald7-grisp/grisp/resolved/Qald7_test.sparql.json",
+    "evaluated_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/Qald7/predictions/Qwen25-7b_Qald7-grisp/grisp/evaluated/Qald7_test.sparql.json",
     "eval_endpoint": "http://amur:7001/sparql",
     "gold_answer_source": "live",
     "resolve_note": "official run",
     "eval_note": "official run",
     "dataset": "Qald7",
     "split": "test",
-    "model_id": "Qwen25-7b_Qald7-sparql",
+    "model_id": "Qwen25-7b_Qald7-grisp",
     "kb": "wikidata",
     "mode": "sparql",
-    "run_name": "sparql",
+    "run_name": "grisp",
     "linker_combo_id": "ChatKBQA.type_map+Wikidata.wbsearchentities_sim+Wikidata.label_search+Wikidata.neighborhood",
     "entity_linker": [
       "ChatKBQA.type_map",
@@ -68,28 +68,202 @@
       0.0
     ],
     "pass_counts": {
-      "Wikidata.label_search": 35,
-      "Wikidata.neighborhood": 5
+      "Wikidata.label_search": 39,
+      "Wikidata.neighborhood": 6
     },
     "resolve_endpoint": "http://amur:7001/sparql",
-    "resolve_timestamp": "2026-09-02T04:58:28.522828+00:00",
+    "resolve_timestamp": "2026-09-03T19:45:01.693394+00:00",
     "num_items": 50,
     "num_stale": 4,
     "stale_pct": 8.0,
     "num_scored": 46,
-    "num_executable": 40,
-    "executable_pct": 80.0,
+    "num_executable": 45,
+    "executable_pct": 90.0,
     "num_exec_error": 0,
     "num_empty_pred": 1,
     "num_with_gold": 46,
     "exact_match": 0.3043,
-    "assignment_f1": 0.3549,
-    "hit1": 0.4348
+    "assignment_f1": 0.3504,
+    "hit1": 0.4565
   },
   {
-    "timestamp": "2026-09-02T20:06:01.660411+00:00",
-    "resolved_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/CWQ/predictions/Llama-2-13b_CWQ-sparql/resolved/sparql/CWQ_test.sparql.json",
-    "evaluated_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/CWQ/predictions/Llama-2-13b_CWQ-sparql/evaluated/sparql/CWQ_test.sparql.json",
+    "timestamp": "2026-09-03T23:31:01.065915+00:00",
+    "resolved_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/WWQ/predictions/Qwen25-7b_WWQ-grisp/grisp/resolved/WWQ_test.sparql.json",
+    "evaluated_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/WWQ/predictions/Qwen25-7b_WWQ-grisp/grisp/evaluated/WWQ_test.sparql.json",
+    "eval_endpoint": "http://amur:7001/sparql",
+    "gold_answer_source": "live",
+    "resolve_note": "official run",
+    "eval_note": "official run",
+    "dataset": "WWQ",
+    "split": "test",
+    "model_id": "Qwen25-7b_WWQ-grisp",
+    "kb": "wikidata",
+    "mode": "sparql",
+    "run_name": "grisp",
+    "linker_combo_id": "ChatKBQA.type_map+Wikidata.wbsearchentities_sim+Wikidata.label_search+Wikidata.neighborhood",
+    "entity_linker": [
+      "ChatKBQA.type_map",
+      "Wikidata.wbsearchentities_sim"
+    ],
+    "entity_linker_params": {
+      "ChatKBQA.type_map": {},
+      "Wikidata.wbsearchentities_sim": {
+        "ke": 50,
+        "te": 0.01,
+        "search_limit": 50,
+        "semantic_weight": 0.55,
+        "lexical_weight": 0.3,
+        "rank_weight": 0.15,
+        "model_name": "princeton-nlp/sup-simcse-roberta-base"
+      }
+    },
+    "predicate_linkers": [
+      "Wikidata.label_search",
+      "Wikidata.neighborhood"
+    ],
+    "predicate_linker_params": {
+      "Wikidata.label_search": {
+        "k": 5
+      },
+      "Wikidata.neighborhood": {
+        "ke": 15,
+        "te": 0.01,
+        "limit": 10000,
+        "timeout": 300,
+        "language": "en",
+        "model_name": "princeton-nlp/unsup-simcse-roberta-large"
+      }
+    },
+    "beam_limits": [
+      15,
+      15
+    ],
+    "k1_per_pass": [
+      100,
+      5
+    ],
+    "t1_per_pass": [
+      0.0,
+      0.0
+    ],
+    "k2_per_pass": [
+      5,
+      15
+    ],
+    "t2_per_pass": [
+      0.0,
+      0.0
+    ],
+    "pass_counts": {
+      "Wikidata.label_search": 1388,
+      "Wikidata.neighborhood": 10
+    },
+    "resolve_endpoint": "http://amur:7001/sparql",
+    "resolve_timestamp": "2026-09-03T23:23:49.148916+00:00",
+    "num_items": 1431,
+    "num_stale": 22,
+    "stale_pct": 1.54,
+    "num_scored": 1409,
+    "num_executable": 1398,
+    "executable_pct": 97.69,
+    "num_exec_error": 0,
+    "num_empty_pred": 0,
+    "num_with_gold": 1409,
+    "exact_match": 0.665,
+    "assignment_f1": 0.7294,
+    "hit1": 0.7956
+  },
+  {
+    "timestamp": "2026-09-04T11:12:25.716150+00:00",
+    "resolved_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/Qald10/predictions/Qwen25-7b_Qald10-grisp/grisp/resolved/Qald10_test.sparql.json",
+    "evaluated_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/Qald10/predictions/Qwen25-7b_Qald10-grisp/grisp/evaluated/Qald10_test.sparql.json",
+    "eval_endpoint": "http://amur:7001/sparql",
+    "gold_answer_source": "live",
+    "resolve_note": "official run",
+    "eval_note": "official run",
+    "dataset": "Qald10",
+    "split": "test",
+    "model_id": "Qwen25-7b_Qald10-grisp",
+    "kb": "wikidata",
+    "mode": "sparql",
+    "run_name": "grisp",
+    "linker_combo_id": "ChatKBQA.type_map+Wikidata.wbsearchentities_sim+Wikidata.label_search+Wikidata.neighborhood",
+    "entity_linker": [
+      "ChatKBQA.type_map",
+      "Wikidata.wbsearchentities_sim"
+    ],
+    "entity_linker_params": {
+      "ChatKBQA.type_map": {},
+      "Wikidata.wbsearchentities_sim": {
+        "ke": 50,
+        "te": 0.01,
+        "search_limit": 50,
+        "semantic_weight": 0.55,
+        "lexical_weight": 0.3,
+        "rank_weight": 0.15,
+        "model_name": "princeton-nlp/sup-simcse-roberta-base"
+      }
+    },
+    "predicate_linkers": [
+      "Wikidata.label_search",
+      "Wikidata.neighborhood"
+    ],
+    "predicate_linker_params": {
+      "Wikidata.label_search": {
+        "k": 5
+      },
+      "Wikidata.neighborhood": {
+        "ke": 15,
+        "te": 0.01,
+        "limit": 10000,
+        "timeout": 300,
+        "language": "en",
+        "model_name": "princeton-nlp/unsup-simcse-roberta-large"
+      }
+    },
+    "beam_limits": [
+      15,
+      15
+    ],
+    "k1_per_pass": [
+      100,
+      5
+    ],
+    "t1_per_pass": [
+      0.0,
+      0.0
+    ],
+    "k2_per_pass": [
+      5,
+      15
+    ],
+    "t2_per_pass": [
+      0.0,
+      0.0
+    ],
+    "pass_counts": {
+      "Wikidata.label_search": 330,
+      "Wikidata.neighborhood": 32
+    },
+    "resolve_endpoint": "http://amur:7001/sparql",
+    "resolve_timestamp": "2026-09-04T11:10:54.252932+00:00",
+    "num_items": 394,
+    "num_stale": 13,
+    "stale_pct": 3.3,
+    "num_scored": 381,
+    "num_executable": 362,
+    "executable_pct": 91.88,
+    "num_exec_error": 0,
+    "num_empty_pred": 8,
+    "num_with_gold": 381,
+    "exact_match": 0.3386,
+    "assignment_f1": 0.3487,
+    "hit1": 0.3596
+  },
+  {
+    "timestamp": "2026-09-05T01:01:44.815913+00:00",
+    "resolved_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/CWQ/predictions/Llama-2-13b_CWQ-sparql/sparql/resolved/CWQ_test.sparql.json",
+    "evaluated_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/CWQ/predictions/Llama-2-13b_CWQ-sparql/sparql/evaluated/CWQ_test.sparql.json",
     "eval_endpoint": "http://localhost:3001/sparql",
     "gold_answer_source": "live",
     "resolve_note": "official run",
@@ -147,22 +321,101 @@
       0.0
     ],
     "pass_counts": {
-      "ChatKBQA.simple": 0,
-      "ChatKBQA.neighborhood": 0
+      "ChatKBQA.simple": 2882,
+      "ChatKBQA.neighborhood": 196
     },
     "resolve_endpoint": "http://localhost:3001/sparql",
-    "resolve_timestamp": "2026-09-02T20:04:50.151111+00:00",
-    "num_items": 3,
-    "num_stale": 0,
-    "stale_pct": 0.0,
-    "num_scored": 3,
-    "num_executable": 0,
-    "executable_pct": 0.0,
+    "resolve_timestamp": "2026-09-05T00:53:00.757735+00:00",
+    "num_items": 3531,
+    "num_stale": 258,
+    "stale_pct": 7.31,
+    "num_scored": 3273,
+    "num_executable": 3078,
+    "executable_pct": 87.17,
     "num_exec_error": 0,
     "num_empty_pred": 0,
-    "num_with_gold": 3,
-    "exact_match": 0.0,
-    "assignment_f1": 0.0,
-    "hit1": 0.0
+    "num_with_gold": 3273,
+    "exact_match": 0.7278,
+    "assignment_f1": 0.7646,
+    "hit1": 0.8045
+  },
+  {
+    "timestamp": "2026-09-07T08:10:09.316222+00:00",
+    "resolved_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/WebQSP/predictions/Llama-2-7b_WebQSP-sparql/sparql/resolved/WebQSP_test.sparql.json",
+    "evaluated_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/WebQSP/predictions/Llama-2-7b_WebQSP-sparql/sparql/evaluated/WebQSP_test.sparql.json",
+    "eval_endpoint": "http://localhost:3001/sparql",
+    "gold_answer_source": "live",
+    "resolve_note": "official run",
+    "eval_note": "official run",
+    "dataset": "WebQSP",
+    "split": "test",
+    "model_id": "Llama-2-7b_WebQSP-sparql",
+    "kb": "freebase",
+    "mode": "sparql",
+    "run_name": "sparql",
+    "linker_combo_id": "ChatKBQA.type_map+ChatKBQA.facc1+ChatKBQA.simple+ChatKBQA.neighborhood",
+    "entity_linker": [
+      "ChatKBQA.type_map",
+      "ChatKBQA.facc1"
+    ],
+    "entity_linker_params": {
+      "ChatKBQA.type_map": {},
+      "ChatKBQA.facc1": {
+        "top_k": 50,
+        "facc_threshold": 0.001
+      }
+    },
+    "predicate_linkers": [
+      "ChatKBQA.simple",
+      "ChatKBQA.neighborhood"
+    ],
+    "predicate_linker_params": {
+      "ChatKBQA.simple": {},
+      "ChatKBQA.neighborhood": {
+        "ke": 15,
+        "te": 0.01,
+        "limit": 10000,
+        "timeout": 300,
+        "model_name": "princeton-nlp/unsup-simcse-roberta-large"
+      }
+    },
+    "beam_limits": [
+      15,
+      15
+    ],
+    "k1_per_pass": [
+      500,
+      50
+    ],
+    "t1_per_pass": [
+      0.0,
+      0.0
+    ],
+    "k2_per_pass": [
+      1,
+      4000
+    ],
+    "t2_per_pass": [
+      0.0,
+      0.0
+    ],
+    "pass_counts": {
+      "ChatKBQA.simple": 1502,
+      "ChatKBQA.neighborhood": 95
+    },
+    "resolve_endpoint": "http://localhost:3001/sparql",
+    "resolve_timestamp": "2026-09-07T08:00:23.054113+00:00",
+    "num_items": 1639,
+    "num_stale": 11,
+    "stale_pct": 0.67,
+    "num_scored": 1628,
+    "num_executable": 1597,
+    "executable_pct": 97.44,
+    "num_exec_error": 0,
+    "num_empty_pred": 1,
+    "num_with_gold": 1628,
+    "exact_match": 0.7064,
+    "assignment_f1": 0.7421,
+    "hit1": 0.7813
   }
 ]

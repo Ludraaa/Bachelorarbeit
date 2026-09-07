@@ -62,12 +62,7 @@ def _normalize(key: str, value):
 
 def model_id_from_training_config(path: str) -> str:
     """
-    Single source of truth for the model_id used to name prediction/resolved/
-    evaluated output directories. Mirrors exactly what generate.py derives
-    from the merged chat config (adapter_name_or_path, falling back to
-    model_name_or_path) — output_dir becomes adapter_name_or_path once
-    merged, so this stays in lockstep with generate.py's own directory
-    naming without either side having to restate a literal model_id.
+    Single source of truth for the model_id.
     """
     with open(path, encoding="utf-8") as f:
         train_cfg = yaml.safe_load(f)
@@ -121,8 +116,7 @@ def require(args, *names: str) -> None:
     """
     Enforce that each named attribute ended up set (via CLI or run_config).
     Needed because any arg that should be fillable from a run_config must
-    be declared `required=False` in argparse (required=True ignores
-    set_defaults), so this replaces argparse's own required-arg check.
+    be declared `required=False` in argparse.
     """
     missing = [n for n in names if getattr(args, n, None) in (None, "")]
     if missing:

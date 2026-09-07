@@ -81,17 +81,17 @@ ENV PYTHONPATH=/workspace
 # ============================================================
 
 RUN mkdir -p \
-    /data \
+    /workspace/data \
     /workspace/.hf-cache \
     /workspace/.pip-cache \
-    /LLMs/data \
-    /LLMs/Models \
-    /LLMs/MyModels && \
-    echo '{}' > /LLMs/data/dataset_info.json && \
+    /workspace/LLMs/data \
+    /workspace/LLMs/Models \
+    /workspace/LLMs/MyModels && \
+    echo '{}' > /workspace/LLMs/data/dataset_info.json && \
     chown -R appuser:appuser \
-        /data \
+        /workspace/data \
         /workspace \
-        /LLMs
+        /workspace/LLMs
 
 
 # ============================================================
@@ -159,4 +159,4 @@ CMD ["/bin/bash", "--rcfile", "bashrc"]
 # wharfer run -it -v /path/to/data:/data --name luis-drayer-thesis luis-drayer-thesis
 
 # With external data, training data, and models:
-# wharfer run -it -v /path/to/data:/data -v /path/to/llms-data:/LLMs/data -v /path/to/models:/LLMs/Models -v /path/to/my-models:/LLMs/MyModels --name luis-drayer-thesis luis-drayer-thesis
+# wharfer run -it -v /path/to/data:/workspace/data -v /path/to/llms-data:/workspace/LLMs/data -v /path/to/models:/workspace/LLMs/Models -v /path/to/my-models:/workspace/LLMs/MyModels --name luis-drayer-thesis luis-drayer-thesis

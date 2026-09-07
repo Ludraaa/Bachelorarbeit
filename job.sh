@@ -54,13 +54,13 @@ for i in $(seq 1 60); do
 done
 echo "=========================================="
 
-RUN_CONFIG=configs/runs/Freebase/CWQ/sparql.yaml
+RUN_CONFIG=configs/runs/Freebase/WebQSP/sparql.yaml
 
 ENDPOINT_URL=$(python -c "import yaml; print(yaml.safe_load(open('$RUN_CONFIG')).get('endpoint_url', ''))")
 export ENDPOINT_URL
 echo "Resolved ENDPOINT_URL: $ENDPOINT_URL"
 
-make train generate RUN_CONFIG=$RUN_CONFIG
+make generate resolve eval RUN_CONFIG=$RUN_CONFIG
 
 echo "====================="
 echo "End time: $(date)"

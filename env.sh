@@ -21,8 +21,8 @@ export JENA_HOME=/opt/ApacheJena/apache-jena-6.0.0
 # Pipeline directories
 # ============================================================
 
-export DATA_DIR=/data
-export LLM_DIR=/LLMs
+export DATA_DIR=/workspace/data
+export LLM_DIR=/workspace/LLMs
 
 
 # ============================================================

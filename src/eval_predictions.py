@@ -63,9 +63,6 @@ def parse_args():
         description="Evaluate resolved KBQA predictions and record results."
     )
 
-    # NOTE: all six of these were required=True. Changed to optional +
-    # require() below so a run_config's top-level values can fill them in
-    # (argparse's required=True ignores set_defaults()).
     parser.add_argument("--dataset", default=None, help="Dataset name.")
     parser.add_argument("--split", default=None, help="Split: dev / test (/ train).")
     parser.add_argument("--mode", default=None, choices=list(_MODES),
@@ -95,23 +92,20 @@ def parse_args():
     parser.add_argument("--skip_analysis", action="store_true", default=False,
                         help="Skip the distribution/hyperparameter-sensitivity analysis and plots.")
 
-    parser.add_argument("--run_name", type=str, default=None,
-        help=(
-            "Folder name the resolved/evaluated output lives under. Derived "
-            "from --run_config's name if omitted, else falls back to the "
-            "entity+predicate linker combo id (the old default behaviour) — "
-            "must match whatever resolve_predictions.py used for this run."
-        ),
-    )
     parser.add_argument("--run_config", type=str, default=None,
-        help="Path to configs/run/<name>.yaml; values become defaults, "
-             "explicit flags still override.",
+        help=(
+            "Path to configs/runs/<kb>/<dataset>/<name>.yaml; values become "
+            "defaults, explicit flags still override. Required — its "
+            "filename stem is the sole source of the resolved/evaluated "
+            "output subfolder name, and must match the run_config used "
+            "when resolving these predictions."
+        ),
     )
 
     apply_run_config_defaults(parser, section="eval")
 
     args = parser.parse_args()
-    require(args, "dataset", "split", "mode", "model_id", "entity_linkers", "predicate_linkers")
+    require(args, "dataset", "split", "mode", "model_id", "entity_linkers", "predicate_linkers", "run_config")
     validate_choice(args, "mode", _MODES)
     return args
 
@@ -119,18 +113,12 @@ def parse_args():
 # --------------------------------------------
 # Path helpers
 
-def _folder_name(args) -> str:
-    if args.run_name:
-        return args.run_name
-    return f"{'+'.join(args.entity_linkers.split(','))}+{'+'.join(args.predicate_linkers.split(','))}"
+def resolved_path(data_dir, dataset, model_id, run_stem, split, mode):
+    return (Path(data_dir) / dataset / "predictions" / model_id / run_stem / "resolved" / f"{dataset}_{split}.{mode}.json")
 
 
-def resolved_path(data_dir, dataset, model_id, folder_name, split, mode):
-    return (Path(data_dir) / dataset / "predictions" / model_id / "resolved" / folder_name / f"{dataset}_{split}.{mode}.json")
-
-
-def evaluated_path(data_dir, dataset, model_id, folder_name, split, mode):
-    return (Path(data_dir) / dataset / "predictions" / model_id / "evaluated" / folder_name / f"{dataset}_{split}.{mode}.json")
+def evaluated_path(data_dir, dataset, model_id, run_stem, split, mode):
+    return (Path(data_dir) / dataset / "predictions" / model_id / run_stem / "evaluated" / f"{dataset}_{split}.{mode}.json")
 
 
 def analysis_json_path(eval_out: Path) -> Path:
@@ -743,10 +731,10 @@ def generate_per_linker_plots(evaluated_items: list[dict], predicate_linkers: li
 def main():
     args = parse_args()
 
-    folder_name = _folder_name(args)
+    run_stem = Path(args.run_config).stem
 
-    res_path = resolved_path(_DATA_DIR, args.dataset, args.model_id, folder_name, args.split, args.mode)
-    eval_out = evaluated_path(_DATA_DIR, args.dataset, args.model_id, folder_name, args.split, args.mode)
+    res_path = resolved_path(_DATA_DIR, args.dataset, args.model_id, run_stem, args.split, args.mode)
+    eval_out = evaluated_path(_DATA_DIR, args.dataset, args.model_id, run_stem, args.split, args.mode)
 
     if not res_path.exists():
         raise FileNotFoundError(f"Resolved file not found: {res_path}")
@@ -776,7 +764,7 @@ def main():
         print(f"Capped to {len(items)} items")
 
     print()
-    print(f"Run folder:         {folder_name}")
+    print(f"Run folder:         {run_stem}")
     print(f"Evaluating against: {args.endpoint_url}")
     print(f"Evaluated file:     {eval_out}")
     print(f"Ledger:             {args.ledger}\n")

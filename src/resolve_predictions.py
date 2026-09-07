@@ -175,33 +175,29 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--run_name", type=str, default=None,
-        help=(
-            "Folder name for this run's output under resolved/. Derived from "
-            "--run_config's name if omitted, else falls back to the "
-            "entity+predicate linker combo id (the old default behaviour)."
-        ),
-    )
-
-    parser.add_argument(
         "--run_config", type=str, default=None,
-        help="Path to configs/run/<name>.yaml; values become defaults, "
-             "explicit flags still override.",
+        help=(
+            "Path to configs/runs/<kb>/<dataset>/<name>.yaml; values become "
+            "defaults, explicit flags still override. Required — its "
+            "filename stem (e.g. 'grisp') is the sole source of the output "
+            "subfolder name under predictions/<model_id>/, so runs with "
+            "differing settings under the same model don't collide."
+        ),
     )
 
     apply_run_config_defaults(parser, section="resolve")
 
     args = parser.parse_args()
-    require(args, "dataset", "model_id")
+    require(args, "dataset", "model_id", "run_config")
     return args
 
 
 # ---------------------------------------------------------------------------
 # File stuff
 
-def load_predictions(data_dir, dataset, model_id, split, mode):
+def load_predictions(data_dir, dataset, model_id, run_stem, split, mode):
     path = os.path.join(
-        data_dir, dataset, "predictions", model_id, "raw",
+        data_dir, dataset, "predictions", model_id, run_stem, "raw",
         f"{dataset}_{split}.{mode}.json",
     )
     print(f"Loading predictions from: {path}")
@@ -213,10 +209,10 @@ def load_predictions(data_dir, dataset, model_id, split, mode):
     return [items, meta]
 
 
-def resolve_output_path(args, folder_name: str) -> str:
+def resolve_output_path(args, run_stem: str) -> str:
     out_dir = args.output_dir or os.path.join(
         args.data_dir, args.dataset, "predictions",
-        args.model_id, "resolved", folder_name,
+        args.model_id, run_stem, "resolved",
     )
     os.makedirs(out_dir, exist_ok=True)
     return os.path.join(out_dir, f"{args.dataset}_{args.split}.{args.mode}.jsonl")
@@ -237,8 +233,8 @@ def _run_manifest_dict(
     """
     The subset of parameters that determine the *content* of a resolved run.
     Written once per run folder; compared on every later invocation so a
-    reused --run_name / run_config name with different parameters is caught
-    instead of silently mixing two configurations' items into one JSONL.
+    reused run_config with different parameters is caught instead of
+    silently mixing two configurations' items into one JSONL.
     """
     return {
         "kb": args.kb,
@@ -265,8 +261,7 @@ def _check_or_write_manifest(run_dir: str, manifest: dict) -> None:
                 f"Run folder already exists with different parameters: {run_dir}\n"
                 f"Existing:  {json.dumps(existing, sort_keys=True)}\n"
                 f"Requested: {json.dumps(manifest, sort_keys=True)}\n"
-                f"Use a different --run_name (or run_config name), or delete the "
-                f"folder to start over."
+                f"Use a different run_config, or delete the folder to start over."
             )
     else:
         os.makedirs(run_dir, exist_ok=True)
@@ -928,6 +923,10 @@ def main():
     ENDPOINT_URL = args.endpoint_url
     os.environ["ENDPOINT_URL"] = args.endpoint_url
 
+    # Sole source of the run's output folder name — computed up front since
+    # it's needed both to load predictions and to write output.
+    run_stem = Path(args.run_config).stem
+
     entity_linker_ids = [s.strip() for s in args.entity_linkers.split(",") if s.strip()]
     predicate_linker_ids = [s.strip() for s in args.predicate_linkers.split(",") if s.strip()]
     n_passes = len(predicate_linker_ids)
@@ -970,7 +969,7 @@ def main():
     }
 
     data, meta = load_predictions(
-        args.data_dir, args.dataset, args.model_id, args.split, args.mode,
+        args.data_dir, args.dataset, args.model_id, run_stem, args.split, args.mode,
     )        
 
     if meta.get("max_beams") is not None and args.beam_limits is None:
@@ -999,16 +998,15 @@ def main():
         data = data[: args.max_samples]
         print(f"Capped to {len(data)} examples")
 
-    folder_name = args.run_name or linker_combo_id
-    jsonl_path = resolve_output_path(args, folder_name)
+    jsonl_path = resolve_output_path(args, run_stem)
     json_path  = jsonl_path.replace(".jsonl", ".json")
 
     debug_jsonl_path = jsonl_path.replace(".jsonl", ".debug.jsonl") if args.debug else None
     debug_json_path  = jsonl_path.replace(".jsonl", ".debug.json")  if args.debug else None
 
     # ------------------------------------------------------------------
-    # run-folder identity check: catch a reused --run_name / run_config
-    # name whose parameters differ from what's already in that folder.
+    # run-folder identity check: catch a reused run_config whose
+    # parameters differ from what's already in that folder.
 
     run_dir = os.path.dirname(jsonl_path)
     manifest = _run_manifest_dict(
@@ -1055,7 +1053,7 @@ def main():
                            k1_list, t1_list, k2_list, t2_list,
                            len(data), executable_count, timeout_count, pass_counts,
                            entity_linker_params, predicate_linker_params,
-                           runtime_agg, args.label_fallback, args.run_name, linker_combo_id)
+                           runtime_agg, args.label_fallback, run_stem, linker_combo_id)
         out = _finalize_to_json(jsonl_path, meta)
         print(f"Finalised → {out}")
         if args.debug and debug_jsonl_path:
@@ -1079,7 +1077,7 @@ def main():
     print(f"  t2 per pass:      {[_get_pass_val(t2_list, i) for i in range(n_passes)]}")
     print(f"  Item time limit:  {args.item_time_limit_sec if args.item_time_limit_sec is not None else 'none'}")
     print(f"  Endpoint:         {ENDPOINT_URL}")
-    print(f"  Run folder:       {folder_name}")
+    print(f"  Run folder:       {run_stem}")
     print(f"  Output (JSONL):   {jsonl_path}\n")
 
     for item_idx, item in enumerate(tqdm(data)):
@@ -1203,7 +1201,7 @@ def main():
                        k1_list, t1_list, k2_list, t2_list,
                        num_items, executable_count, timeout_count, pass_counts,
                        entity_linker_params, predicate_linker_params,
-                       runtime_agg, args.label_fallback, args.run_name, linker_combo_id)
+                       runtime_agg, args.label_fallback, run_stem, linker_combo_id)
 
     out = _finalize_to_json(jsonl_path, meta)
 
@@ -1244,7 +1242,7 @@ def _build_meta(
     predicate_linker_params: dict,
     runtime_agg: dict,
     label_fallback: bool,
-    run_name: str | None,
+    run_config_name: str,
     linker_combo_id: str,
 ) -> dict:
     n = len(predicate_linker_ids)
@@ -1255,7 +1253,7 @@ def _build_meta(
         "model_id":         args.model_id,
         "kb":               args.kb,
         "mode":             args.mode,
-        "run_name":         run_name,
+        "run_name":         run_config_name,
         "linker_combo_id":  linker_combo_id,
         "entity_linkers":   entity_linker_ids,
         "entity_linker_params":    entity_linker_params,

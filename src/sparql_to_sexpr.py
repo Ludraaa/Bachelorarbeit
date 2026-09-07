@@ -54,6 +54,12 @@ def build_debug_report_path(dataset_name: str, split: str, mode: str, kind: str)
     return os.path.join(data_dir, dataset_name, "sexpr", name)
 
 
+def build_jsonl_scratch_path(dataset_name: str, split: str, mode: str) -> str:
+    data_dir = os.environ.get("DATA_DIR", "data")
+    name = f"{dataset_name}_{split}.{mode}.expr.jsonl"
+    return os.path.join(data_dir, dataset_name, "sexpr", name)
+
+
 def write_id_report(path: str, ids: list[str]) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
@@ -228,11 +234,17 @@ def process_split(
     mode: str,
     common_prefixes: list,
     config: dict | None = None,
+    no_mismatch_analysis: bool = False,
+    no_gold_exec: bool = False,
 ) -> dict:
 
     print(f"\n{'=' * 60}")
     print(f"Split: {split} | Mode: {mode}")
     print(f"Input: {input_path}")
+    if no_gold_exec:
+        print("Gold execution disabled: neither raw nor normed gold queries will be run")
+    elif no_mismatch_analysis:
+        print("Mismatch analysis disabled: skipping raw gold execution; staleness checked on normed gold only")
 
     entries = load_dataset(input_path, config)
     total = len(entries)
@@ -241,7 +253,7 @@ def process_split(
     exec_ok = 0          # normed gold execution ok
     exec_failed  = 0     # normed gold execution failed
     raw_exec_failed = 0  # raw (unnormalised) gold execution failed
-    stale_count = 0      # raw gold execution succeeded but returned nothing
+    stale_count = 0      # gold execution succeeded but returned nothing
     mismatch_count = 0   # raw gold vs normed gold results differ
     failed_ids: list[str] = []
     stale_ids: list[str] = []
@@ -251,6 +263,10 @@ def process_split(
 
     if not endpoint_url:
         print("Warning: ENDPOINT_URL not set")
+
+    jsonl_path = build_jsonl_scratch_path(dataset_name, split, mode)
+    os.makedirs(os.path.dirname(jsonl_path), exist_ok=True)
+    jsonl_f = open(jsonl_path, "w", encoding="utf-8")
 
     for i, entry in enumerate(entries):
         sparql_query = (entry.get("sparql") or "").strip()
@@ -270,71 +286,90 @@ def process_split(
         raw_rows = None
         normed_rows = None
 
-        # execute the untouched, as-given gold query
-        if sparql_query and endpoint_url:
-            raw_result = execute_sparql(sparql_query, endpoint_url)
-            if raw_result is not None:
-                raw_rows = bindings_to_rows(raw_result)
-                entry["gold_raw_answer"] = raw_rows
-                if not raw_rows:
-                    stale_count += 1
-                    stale_ids.append(qid)
-            else:
-                entry["gold_raw_exec_failed"] = True
-                raw_exec_failed += 1
+        if not no_gold_exec:
+            if not no_mismatch_analysis:
+                # execute the untouched, as-given gold query
+                if sparql_query and endpoint_url:
+                    raw_result = execute_sparql(sparql_query, endpoint_url)
+                    if raw_result is not None:
+                        raw_rows = bindings_to_rows(raw_result)
+                        entry["gold_raw_answer"] = raw_rows
+                        if not raw_rows:
+                            stale_count += 1
+                            stale_ids.append(qid)
+                    else:
+                        entry["gold_raw_exec_failed"] = True
+                        raw_exec_failed += 1
 
-        # execute the normalised gold query (this is what downstream scoring uses)
-        if normed and endpoint_url:
-            normed_result = execute_sparql(normed, endpoint_url)
-            if normed_result is not None:
-                normed_rows = bindings_to_rows(normed_result)
-                entry["answer"] = normed_rows
-                exec_ok += 1
-            else:
-                entry["answer_exec_failed"] = True
-                exec_failed += 1
+            # execute the normalised gold query (this is what downstream scoring uses)
+            if normed and endpoint_url:
+                normed_result = execute_sparql(normed, endpoint_url)
+                if normed_result is not None:
+                    normed_rows = bindings_to_rows(normed_result)
+                    entry["answer"] = normed_rows
+                    exec_ok += 1
 
-        # compare raw vs normed gold execution -- catches normalisation bugs
-        if raw_rows is not None and normed_rows is not None:
-            if {tuple(r) for r in raw_rows} != {tuple(r) for r in normed_rows}:
-                entry["gold_normed_mismatch"] = True
-                mismatch_count += 1
-                mismatch_ids.append(qid)
+                    if no_mismatch_analysis and not normed_rows:
+                        stale_count += 1
+                        stale_ids.append(qid)
+                else:
+                    entry["answer_exec_failed"] = True
+                    exec_failed += 1
+
+            # compare raw vs normed gold execution -- catches normalisation bugs
+            if not no_mismatch_analysis and raw_rows is not None and normed_rows is not None:
+                if {tuple(r) for r in raw_rows} != {tuple(r) for r in normed_rows}:
+                    entry["gold_normed_mismatch"] = True
+                    mismatch_count += 1
+                    mismatch_ids.append(qid)
 
         # s-expression conversion
         if not sparql_query:
             entry["Sexpr"] = "Parsing failed"
             conv_skipped += 1
             print("SKIPPED")
-            continue
+        else:
+            try:
+                fixed = fix_sparql_for_jena(sparql_query, common_prefixes)
+                form = detect_query_form(fixed)
+                entry["Sexpr"] = converter(fixed, common_prefixes, form)
+                print("OK")
 
-        try:
-            fixed = fix_sparql_for_jena(sparql_query, common_prefixes)
-            form = detect_query_form(fixed)
-            entry["Sexpr"] = converter(fixed, common_prefixes, form)
-            print("OK")
+            except Exception as e:
+                entry["Sexpr"] = "Parsing failed"
+                conv_failed += 1
+                failed_ids.append(qid)
+                print(f"FAILED ({e})")
 
-        except Exception as e:
-            entry["Sexpr"] = "Parsing failed"
-            conv_failed += 1
-            failed_ids.append(qid)
-            print(f"FAILED ({e})")
+        jsonl_f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    jsonl_f.close()
 
     norm_failed = sum(1 for e in entries if e.get("normed_sparql_error"))
     conv_ok = total - conv_failed - conv_skipped
 
     print(f"\nConversion : {conv_ok}/{total} ok, {conv_failed} failed, {conv_skipped} skipped")
     print(f"Gold norm  : {total - norm_failed}/{total} ok, {norm_failed} failed")
-    if endpoint_url:
-        print(f"Gold exec (raw)    : {raw_exec_failed} failed, {stale_count} empty")
-        print(f"Gold exec (normed) : {exec_ok}/{total} ok, {exec_failed} failed")
-        print(f"Raw vs normed mismatch : {mismatch_count}")
+    if no_gold_exec:
+        print("Gold exec  : skipped")
+    elif endpoint_url:
+        if no_mismatch_analysis:
+            print(f"Gold exec (normed) : {exec_ok}/{total} ok, {exec_failed} failed, {stale_count} empty")
+        else:
+            print(f"Gold exec (raw)    : {raw_exec_failed} failed, {stale_count} empty")
+            print(f"Gold exec (normed) : {exec_ok}/{total} ok, {exec_failed} failed")
+            print(f"Raw vs normed mismatch : {mismatch_count}")
 
     out_path = build_output_path(dataset_name, split, mode)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
+    with open(jsonl_path, "r", encoding="utf-8") as f:
+        final_entries = [json.loads(line) for line in f if line.strip()]
+
     with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(entries, f, indent=2, ensure_ascii=False)
+        json.dump(final_entries, f, indent=2, ensure_ascii=False)
+
+    os.remove(jsonl_path)
 
     print(f"Saved: {out_path}")
 
@@ -394,6 +429,30 @@ def main() -> None:
     parser.add_argument("--run_config", type=str, default=None,
                         help="Path to configs/run/<name>.yaml"
                         )
+    parser.add_argument(
+        "--no_mismatch_analysis",
+        action="store_true",
+        default=False,
+        help=(
+            "Skip raw (unnormalised) gold execution and the raw-vs-normed "
+            "mismatch check. Use this for datasets whose gold SPARQL doesn't "
+            "declare prefixes, so raw execution would fail for every entry. "
+            "Staleness ('empty result') detection falls back to the normed "
+            "gold query in this mode."
+        ),
+    )
+    parser.add_argument(
+        "--no_gold_exec",
+        action="store_true",
+        default=False,
+        help=(
+            "Skip gold execution entirely -- neither the raw nor the normed gold "
+            "query is run against the endpoint, and no 'answer' / 'gold_raw_answer' "
+            "fields are written. Use this when some gold queries return results too "
+            "large to hold in memory, or time out against the endpoint. Implies "
+            "--no_mismatch_analysis (nothing left to compare)."
+        ),
+    )
 
     apply_run_config_defaults(parser, section="convert", config_ref_key="dataset_config")
 
@@ -424,7 +483,11 @@ def main() -> None:
 
     results = []
     for split, path in splits:
-        result = process_split(dataset, split, path, args.mode, prefixes, config)
+        result = process_split(
+            dataset, split, path, args.mode, prefixes, config,
+            no_mismatch_analysis=args.no_mismatch_analysis,
+            no_gold_exec=args.no_gold_exec,
+        )
         results.append(result)
 
     print_final_overview(results)

@@ -52,6 +52,9 @@ class BaseKB(ABC):
                             run against (if, for example, LABEL_QUERY/TYPES_QUERY rely on a
                             service extension only one endpoint implements).
                             Runs on the endpoint specified in the run config if not explicitly set.
+      - TYPES_QUERY:        str | None        SPARQL template, {values}; determines which
+                            candidate URIs act as types/classes in this KB. "None" means 
+                            this KB does not support type filtering or is not desired;
 
     Subclasses MUST implement:
       - normalize(uri)
@@ -67,6 +70,7 @@ class BaseKB(ABC):
     KB_PREFIXES: dict[str, str] = {}
     LABEL_QUERY: str = ""
     LABEL_ENDPOINT_URL: str | None = None
+    TYPES_QUERY: str | None = None
 
     ENTITY_PATTERN: re.Pattern | None = None
     RELATION_PATTERN: re.Pattern | None = None
@@ -107,6 +111,13 @@ class BaseKB(ABC):
             if m:
                 return m.group(1)
         return uri.rsplit("/", 1)[-1]
+
+
+    # type-URI filtering
+
+    def parse_type_results(self, bindings: list[dict]) -> set[str]:
+        """Return the set of URIs from *bindings* that act as types/classes in this KB."""
+        return {row["uri"]["value"] for row in bindings if "uri" in row}
 
 
     # fallback for format_labels()

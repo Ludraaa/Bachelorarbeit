@@ -39,13 +39,18 @@ def parse_args():
                              "Higher values = more diverse but potentially less coherent outputs. "
                              "Recommended: 1.0 for Llama, 0.5 for Qwen")
     parser.add_argument("--run_config", type=str, default=None,
-                        help="Path to configs/run/<name>.yaml; values become defaults, "
-                             "explicit flags still override.")
+                        help=(
+                            "Path to configs/runs/<kb>/<dataset>/<name>.yaml; values "
+                            "become defaults, explicit flags still override. Required — "
+                            "its filename stem (e.g. 'grisp') is used as the output "
+                            "subfolder name under predictions/<model_id>/, so runs with "
+                            "differing settings under the same model don't collide."
+                        ))
 
     apply_run_config_defaults(parser, section="generate", config_ref_key="infer_config")
 
     args = parser.parse_args()
-    require(args, "config", "dataset")
+    require(args, "config", "dataset", "run_config")
     validate_choice(args, "mode", ["jena", "sparql"])
     return args
 
@@ -136,6 +141,38 @@ def generate_beams(
             unique.append(p)
 
     return unique
+
+
+# ---------------------------------------------------------------------------
+# Run identity (mirrors resolve.py's manifest check)
+
+def _run_manifest_dict(args) -> dict:
+    """Parameters that determine the *content* of a generation run."""
+    return {
+        "dataset": args.dataset,
+        "split": args.split,
+        "mode": args.mode,
+        "kb": args.kb,
+        "num_beams": args.num_beams,
+        "max_new_tokens": args.max_new_tokens,
+        "diversity_penalty": args.diversity_penalty,
+    }
+
+
+def _check_or_write_manifest(run_dir: str, manifest: dict) -> None:
+    path = os.path.join(run_dir, "run_manifest.json")
+    if os.path.exists(path):
+        existing = json.loads(Path(path).read_text(encoding="utf-8"))
+        if existing != manifest:
+            raise ValueError(
+                f"Run folder already exists with different parameters: {run_dir}\n"
+                f"Existing:  {json.dumps(existing, sort_keys=True)}\n"
+                f"Requested: {json.dumps(manifest, sort_keys=True)}\n"
+                f"Use a different run_config (or delete the folder to start over)."
+            )
+    else:
+        os.makedirs(run_dir, exist_ok=True)
+        Path(path).write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -273,11 +310,18 @@ def main():
         print(f"Capped to {len(data)} examples")
 
     model_id = Path(cfg.get("adapter_name_or_path") or cfg["model_name_or_path"]).name
+
+    # e.g. configs/runs/Wikidata/Qald7/grisp.yaml -> "grisp"
+    run_stem = Path(args.run_config).stem
+
     run_name = f"{args.dataset}_{args.split}.{args.mode}"
-    out_dir  = os.path.join(data_dir, args.dataset, "predictions", model_id, "raw")
+    out_dir  = os.path.join(data_dir, args.dataset, "predictions", model_id, run_stem, "raw")
     os.makedirs(out_dir, exist_ok=True)
     out_path   = os.path.join(out_dir, f"{run_name}.json")
     ckpt_path  = os.path.join(out_dir, f"{run_name}.ckpt.jsonl")
+
+    _check_or_write_manifest(out_dir, _run_manifest_dict(args))
+
     print(f"Output:     {out_path}")
     print(f"Checkpoint: {ckpt_path}")
 
