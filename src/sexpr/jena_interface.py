@@ -17,7 +17,7 @@ JAVA = os.path.join(_JAVA_HOME, "bin", "java")
 CLASSPATH = (
     os.path.join(_JENA_HOME, "lib", "*")
     + ":"
-    + os.path.join(os.getcwd(), "ApacheJena")
+    + os.path.join(os.getcwd(), "src", "sexpr")
 )
 
 # ---------------------------------------------------------------------------

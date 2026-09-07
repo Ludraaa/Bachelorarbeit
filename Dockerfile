@@ -57,6 +57,10 @@ ENV PATH="${JAVA_HOME}/bin:${JENA_HOME}/bin:${PATH}"
 RUN java -version && \
     riot --version
 
+# build java file
+RUN java -cp "${JENA_HOME}/lib/*:/workspace/src/sexpr" JenaServer
+RUN test -f /workspace/ApacheJena/JenaServer.class
+
 
 # ============================================================
 # Workspace
