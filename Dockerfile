@@ -160,7 +160,8 @@ CMD ["/bin/bash", "--rcfile", "bashrc"]
 # ============================================================
 
 # no initial data
-# wharfer run -it -v .:/extern/data --name luis-drayer-thesis luis-drayer-thesis
+# mkdir data
+# wharfer run -it -v $(pwd)/data:/extern/data --name luis-drayer-thesis luis-drayer-thesis
 
 # full initial data (requires uni pc)
 # wharfer run -it -v /nfs/students/luis-drayer:/extern/data --name luis-drayer-thesis luis-drayer-thesis
