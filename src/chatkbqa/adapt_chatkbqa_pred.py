@@ -1,18 +1,3 @@
-#!/usr/bin/env python3
-"""
-fuse_predictions.py
-
-Fuses a ChatKBQA-style predictions file (JSONL: {label, predict})
-with the WebQSP dataset file (JSON array) into a single JSON file.
-
-Usage:
-    python fuse_predictions.py \
-        --dataset  webqsp_test.json \
-        --preds    predictions.jsonl \
-        --output   fused.json \
-        --kb       freebase
-"""
-
 import json
 import re
 import argparse
@@ -25,11 +10,11 @@ from src.utils.kb import load_kb_module
 FB_NS = "http://rdf.freebase.com/ns/"
 
 
-# ---------------------------------------------------------------------------
-# Transform compact sexpr  (JOIN (R location.country.languages_spoken) m.03_r3)
-# → adds fb: to MIDs, fbp: to dotted relation paths
-# ---------------------------------------------------------------------------
+
 def transform_compact_sexpr(sexpr: str) -> str:
+    """
+    Adds URLs to the originally isolated entity and predicate ids.
+    """
     if not sexpr or sexpr == "null":
         return sexpr
 
@@ -46,11 +31,10 @@ def transform_compact_sexpr(sexpr: str) -> str:
     )
 
 
-# ---------------------------------------------------------------------------
-# Transform normed/labelled sexpr  ( JOIN ( R [ a , b , c d ] ) [ Jamaica ] )
-# → ( JOIN (R fbp:a.b.c_d) fb:Jamaica )
-# ---------------------------------------------------------------------------
 def transform_normed_sexpr(sexpr: str) -> str:
+    """
+    Replaces list notation predicates with dot notation (and prefix). Also adds prefix to entities.
+    """
     if not sexpr or sexpr == "null":
         return sexpr
 
@@ -82,30 +66,31 @@ def transform_normed_sexpr(sexpr: str) -> str:
     return result
 
 
-# ---------------------------------------------------------------------------
-# Map expansion — short keys → full Freebase URLs
-# ---------------------------------------------------------------------------
 def expand_entity_map(entity_map: dict) -> dict:
-    """{ "m.03_r3": "Jamaica" } → { "http://.../m.03_r3": "Jamaica" }"""
+    """
+    { "m.03_r3": "Jamaica" } -> { "http://.../m.03_r3": "Jamaica" }
+    """
     return {f"{FB_NS}{mid}": label for mid, label in entity_map.items()}
 
 
 def expand_relation_map(relation_map: dict) -> dict:
     """
     { "location.country.languages_spoken": "..." }
-    → { "http://.../location.country.languages_spoken": "location.country.languages_spoken" }
+    -> { "http://.../location.country.languages_spoken": "location.country.languages_spoken" }
     """
     return {f"{FB_NS}{rel}": rel for rel in relation_map.keys()}
 
 
 def expand_type_map(type_map: dict) -> dict:
-    """{ "m.0hzjlmp": "UK constituent country" } → { "http://.../m.0hzjlmp": "UK constituent country" }"""
+    """
+    { "m.0hzjlmp": "UK constituent country" } -> { "http://.../m.0hzjlmp": "UK constituent country" }
+    """
     return {f"{FB_NS}{mid}": label for mid, label in type_map.items()}
 
 
 # ---------------------------------------------------------------------------
-# I/O helpers
-# ---------------------------------------------------------------------------
+# I/O
+
 def load_dataset(path: Path) -> list[dict]:
     text = path.read_text(encoding="utf-8")
     try:
@@ -134,8 +119,8 @@ def build_label_index(preds: list[dict]) -> dict[str, list[dict]]:
 
 
 # ---------------------------------------------------------------------------
-# Core fusion
-# ---------------------------------------------------------------------------
+# Core
+
 def fuse(
     dataset: list[dict],
     preds: list[dict],
@@ -181,11 +166,10 @@ def fuse(
         answer_list = item.get("answer", [])
         answers = [[answer] for answer in answer_list]
 
-        # Expand and accumulate the type map (absent on non-Freebase KBs or
-        # older dataset files that predate insert_labels type support).
+        # Expand and accumulate the type map
         raw_type_map = item.get("gold_type_map", {})
         expanded_type_map = expand_type_map(raw_type_map) if raw_type_map else {}
-        global_type_map.update(expanded_type_map)   # dict.update deduplicates by key
+        global_type_map.update(expanded_type_map)
 
         fused_item = {
             **{k: v for k, v in item.items()
@@ -210,9 +194,6 @@ def fuse(
     return fused, global_type_map
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset",  required=True, type=Path)
@@ -223,8 +204,6 @@ def main():
         "--type-map", type=Path, default=None,
         help=(
             "Where to write the global type label map JSON. "
-            "Defaults to <output-stem>_type_label_map.json alongside --output. "
-            "Pass an empty string to suppress writing."
         ),
     )
     args = parser.parse_args()
@@ -246,7 +225,6 @@ def main():
 
     # ------------------------------------------------------------------
     # Write the global type label map when the KB produced one.
-    # Resolve output path: explicit arg > default sibling > suppress.
 
     if global_type_map:
         if args.type_map is None:
@@ -269,8 +247,7 @@ def main():
                 f"({len(global_type_map)} entries) → {type_map_path}"
             )
     else:
-        print("No gold_type_map entries found — type label map not written "
-              "(expected for non-Freebase KBs)")
+        print("No gold_type_map entries found: type label map not written ")
 
 
 if __name__ == "__main__":

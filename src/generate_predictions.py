@@ -37,15 +37,8 @@ def parse_args():
     parser.add_argument("--diversity_penalty", type=float, default=0.5,
                         help="Diversity penalty for group beam search. "
                              "Higher values = more diverse but potentially less coherent outputs. "
-                             "Recommended: 1.0 for Llama, 0.5 for Qwen")
-    parser.add_argument("--run_config", type=str, default=None,
-                        help=(
-                            "Path to configs/runs/<kb>/<dataset>/<name>.yaml; values "
-                            "become defaults, explicit flags still override. Required — "
-                            "its filename stem (e.g. 'grisp') is used as the output "
-                            "subfolder name under predictions/<model_id>/, so runs with "
-                            "differing settings under the same model don't collide."
-                        ))
+                             "Recommended: ~1.0 for Llama, ~0.5 for Qwen")
+    parser.add_argument("--run_config", type=str, default=None)
 
     apply_run_config_defaults(parser, section="generate", config_ref_key="infer_config")
 
@@ -144,10 +137,10 @@ def generate_beams(
 
 
 # ---------------------------------------------------------------------------
-# Run identity (mirrors resolve.py's manifest check)
+# Run identity
 
 def _run_manifest_dict(args) -> dict:
-    """Parameters that determine the *content* of a generation run."""
+    """Parameters that determine the content of a generation run."""
     return {
         "dataset": args.dataset,
         "split": args.split,
@@ -266,8 +259,7 @@ def build_chat_config(infer_config_path: str, training_config_path: str | None) 
     """Infer-only settings (infer_dtype, trust_remote_code, ...) layered on
     top of the training config's model identity, so model_name_or_path /
     adapter path / template are declared exactly once, in the training
-    config. Values already present in the infer yaml win (setdefault),
-    so legacy fully-specified infer configs keep working unchanged."""
+    config."""
     with open(infer_config_path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
 

@@ -79,22 +79,6 @@ download-lcquad2:
 # ============================================================
 # Freebase KG Setup
 # ============================================================
-#
-# Mirrors the "Freebase KG Setup" steps from the ChatKBQA README
-# (https://github.com/LHRLAB/ChatKBQA/blob/main/README.md), which in
-# turn point at https://github.com/dki-lab/Freebase-Setup.
-#
-# NOTE: the README's own step 1 code block only shows `cd Freebase-Setup`
-# — the actual clone command is only described in prose ("Clone from
-# dki-lab/Freebase-Setup"), not shown literally. Filled in below.
-#
-# NOTE: the README extracts the downloaded virtuoso_db.zip with
-# `tar -zxvf`, not `unzip`, despite the .zip extension — kept exactly
-# as documented rather than silently switched to unzip, in case the
-# file is actually gzipped tar content under a misleading name.
-#
-# The Virtuoso DB download is 53GB+ (README's own figure) — expect
-# this to take a while, and make sure FREEBASE_DIR has the space.
 
 .PHONY: freebase-install freebase-start freebase-stop
 
@@ -112,7 +96,7 @@ freebase-install:
 		echo "virtuoso_db already extracted, skipping download"; \
 	else \
 		curl -fL "$(VIRTUOSO_DB_URL)" -o "$(FREEBASE_DIR)/virtuoso_db.zip"; \
-		tar -zxvf "$(FREEBASE_DIR)/virtuoso_db.zip" -C "$(FREEBASE_DIR)"; \
+		unzip -q "$(FREEBASE_DIR)/virtuoso_db.zip" -d "$(FREEBASE_DIR)"; \
 		rm "$(FREEBASE_DIR)/virtuoso_db.zip"; \
 	fi
 

@@ -138,12 +138,9 @@ def remove_comments(s: str) -> str:
 
 def _mask_literals(s: str) -> str:
     """
-    Return a same-length copy of *s* with the contents of string literals
-    and IRIs (<...>) blanked out to spaces, so bracket/paren/keyword
-    scanning elsewhere isn't confused by punctuation inside them.
-    Positions line up 1:1 with the original string, so callers can search
-    the masked text and then slice the ORIGINAL string at the same
-    indices. Mirrors the string/IRI tracking in remove_comments() above.
+    Return a same-length copy with the contents of string literals
+    and IRIs blanked out to spaces, so bracket/paren/keyword
+    scanning elsewhere isn't confused by punctuation inside.
     """
     out = []
     in_string = False
@@ -191,19 +188,9 @@ def _mask_literals(s: str) -> str:
 
 def _collapse_whitespace_outside_literals(s: str) -> str:
     """
-    Like " ".join(s.split()), but quote/IRI-aware: collapses runs of
-    whitespace to a single space and trims the ends, EXCEPT inside string
-    literals or <...> IRIs, whose contents (including any internal
-    whitespace, e.g. multiple spaces) are passed through byte-for-byte.
-
-    This matters because a naive global ``" ".join(sparql.split())`` does
-    not know it's inside a quoted literal and will happily collapse
-    whitespace there too -- silently changing the literal's value. If the
-    underlying KB has that exact (unusual) literal stored with e.g. a
-    double space, collapsing it to a single space makes the query stop
-    matching anything, with no error raised anywhere. Mirrors the
-    string/IRI tracking in remove_comments() / _mask_literals() above.
+    Collapses multi whitespaces to a singular one, except for inside of string literals.
     """
+
     out = []
     in_string = False
     quote = None
@@ -299,14 +286,7 @@ def _plain_vars_at_depth0(select_list_masked: str) -> list[str]:
 
 def _add_missing_group_by(sparql: str) -> str:
     """
-    Some CWQ/WebQSP gold queries project an aggregate (COUNT, SUM, ...)
-    alongside a plain, non-aggregated variable with no GROUP BY clause,
-    e.g. 'SELECT ?x (COUNT(?x) AS ?count) WHERE { ... }' — a common
-    "argmax" idiom (per-?x counts, then filtered against a separately
-    computed max) where the author forgot GROUP BY ?x. Some SPARQL
-    engines accept this leniently; Jena's strict validator rejects it
-    with "Non-group key variable in SELECT". This detects the pattern,
-    at any nesting depth, and injects the missing GROUP BY.
+    Jena requires 'GROUP BY' for aggregates. This function adds them.
     """
     masked = _mask_literals(sparql)
 

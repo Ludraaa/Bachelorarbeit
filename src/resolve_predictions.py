@@ -85,7 +85,7 @@ def parse_args():
     parser.add_argument("--dataset",   type=str, default=None)
     parser.add_argument("--split",     type=str, default="test")
     parser.add_argument(
-        "--mode", type=str, default="simple",
+        "--mode", type=str, default="sparql",
         choices=["chatkbqa_webqsp", "chatkbqa_cwq", "jena", "sparql"],
     )
     parser.add_argument("--model_id",  type=str, default=None)
@@ -94,7 +94,7 @@ def parse_args():
     parser.add_argument(
         "--entity_linkers",
         type=str,
-        default="wikidata_sim",
+        default="None",
         help=(
             "Comma-separated ordered list of entity linker IDs. Each linker "
             "only sees labels still unresolved by the ones before it, "
@@ -106,7 +106,7 @@ def parse_args():
     parser.add_argument(
         "--predicate_linkers",
         type=str,
-        default="label_search",
+        default="None",
         help=(
             "Comma-separated ordered list of predicate linker IDs. "
             "Each item is tried across all beams before the next is attempted. "
@@ -155,12 +155,8 @@ def parse_args():
         type=float,
         default=None,
         help=(
-            "Optional wall-clock time budget per item, in seconds, shared "
-            "across all beams and all predicate-linker passes for that item. "
-            "If exceeded, the item is abandoned immediately (no further "
-            "beams/passes are tried), recorded as unresolved with "
-            "timed_out=true, and processing moves on to the next item. "
-            "Default: no limit."
+            "Optional total time budget per item, in seconds. "
+            "If exceeded, the item is abandoned immediately. "
         ),
     )
 
@@ -178,16 +174,7 @@ def parse_args():
         help="SPARQL endpoint used during resolution.",
     )
 
-    parser.add_argument(
-        "--run_config", type=str, default=None,
-        help=(
-            "Path to configs/runs/<kb>/<dataset>/<name>.yaml; values become "
-            "defaults, explicit flags still override. Required — its "
-            "filename stem (e.g. 'grisp') is the sole source of the output "
-            "subfolder name under predictions/<model_id>/, so runs with "
-            "differing settings under the same model don't collide."
-        ),
-    )
+    parser.add_argument("--run_config", type=str, default=None)
 
     apply_run_config_defaults(parser, section="resolve")
 
@@ -235,10 +222,7 @@ def _run_manifest_dict(
     n_passes: int,
 ) -> dict:
     """
-    The subset of parameters that determine the *content* of a resolved run.
-    Written once per run folder; compared on every later invocation so a
-    reused run_config with different parameters is caught instead of
-    silently mixing two configurations' items into one JSONL.
+    The subset of parameters that determine the content of a resolved run.
     """
     return {
         "kb": args.kb,
@@ -276,11 +260,6 @@ def _check_or_write_manifest(run_dir: str, manifest: dict) -> None:
 # JSONL helpers
 
 def _load_existing_jsonl(path: str) -> tuple[list[dict], int]:
-    """
-    Read an existing JSONL file.  Silently skips corrupt / partial lines
-    (e.g. a half-written line from a previous crash).
-    Returns (items, valid_line_count).
-    """
     items: list[dict] = []
     if not os.path.exists(path):
         return items, 0
@@ -689,8 +668,7 @@ def _entity_label_fallback(sparql: str) -> str | None:
     Mirrors ChatKBQA's own zero-result retry. Handles both entity surface
     forms (ns:m.xxx from the chatkbqa_cwq/chatkbqa_webqsp converters, and
     full <...ns/m.xxx> URIs from raw sparql-mode beams) and both known
-    FILTER serializations. Freebase/CWQ+WQSP/sparql-mode specific by
-    design — not a general SPARQL rewriter.
+    FILTER serializations. Freebase specific.
     """
     entities = sorted(set(
         m for pat in _ENTITY_PATTERNS for m in pat.findall(sparql)
@@ -953,8 +931,6 @@ def main():
     ENDPOINT_URL = args.endpoint_url
     os.environ["ENDPOINT_URL"] = args.endpoint_url
 
-    # Sole source of the run's output folder name — computed up front since
-    # it's needed both to load predictions and to write output.
     run_stem = Path(args.run_config).stem
 
     entity_linker_ids = [s.strip() for s in args.entity_linkers.split(",") if s.strip()]

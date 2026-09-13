@@ -1,11 +1,26 @@
 ## File and Container Structure
 
-As defined in the Dockerfile, external data can be mounted into the container. If not mounted, the produced data will not persist different docker sessions. The 3 potential mount points are:
+As defined in the Dockerfile, it is strongly advised to mount an external volume to the container to ensure data persistence across different sessions.
+Upon mounting an empty external volume to the container, the following folder structure will appear inside:
+`data/`:
+    - `Configs/` - all run, training, dataset and inference configs go into the corresponding subfolders of this folder. Inside the subfolder, the configs may be organized as desired. Add new configs here to control the wanted behavior of the pipeline.
+    - `Data/` - this is where the actual output files of the pipeline steps go. This folder should not have to be manually touched a lot.
+    - `Freebase-Setup/` - more on this in the section below.
+    - `LLMdata/` - this is where training datasets to be used by Llamafactory live. This should also not require any manual effort.
+    - `Models/` - this folder stores base models to be used for finetuning. You may follow the steps in the corresponding section to download any model wanted for finetuning. Make sure the name in the training config matches the folder name of the model.
+    - `MyModels/` - here live the finetuned adapters
+    - `Results/` - contains the single result json file that accumulates the scores of all runs
 
-`/workspace/data/`: all produced files (except for models and adapters) will be saved here.
-`/workspace/LLMs/Models/`: base models used for finetuning go here
-`/workspace/LLMs/MyModels/`: Finetuned adapters will be output here
+---
 
+## Knowledge Base Setup
+
+While any knowledge base works in theory (even WDQS, for example), it is almost mandatory to use a local or at least private instance. This is because the resolve step of the pipeline relies on
+(in extreme cases) executing up to thousands of SPARQL queries for every single item. You will hit the rate limit on a public endpoint very quickly.
+
+### Freebase
+
+While any local variant works, to stay as comparable to the original ChatKBQA as possible, we use the same virtuoso setup they used.
 
 ---
 

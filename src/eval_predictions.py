@@ -81,10 +81,7 @@ def parse_args():
     parser.add_argument("--get-live-gold", action="store_true", default=False,
                         help="Execute the gold SPARQL live instead of using stored answers.")
     parser.add_argument("--live_only", action="store_true", default=False,
-                        help="Ignore saved gold answers entirely — only respect live-executed "
-                             "gold answers. Any item whose gold SPARQL cannot be normalised, "
-                             "fails to execute, or returns no rows live becomes 'stale' instead "
-                             "of falling back to the saved answer. Requires --get-live-gold.")
+                        help="Ignore saved gold answers entirely and only respect live-executed gold answers.")
 
     parser.add_argument("--ledger", default=_DEFAULT_LEDGER,
                         help="Path to the central results ledger JSON.")
@@ -97,15 +94,7 @@ def parse_args():
     parser.add_argument("--skip_analysis", action="store_true", default=False,
                         help="Skip the distribution/hyperparameter-sensitivity analysis and plots.")
 
-    parser.add_argument("--run_config", type=str, default=None,
-        help=(
-            "Path to configs/runs/<kb>/<dataset>/<name>.yaml; values become "
-            "defaults, explicit flags still override. Required — its "
-            "filename stem is the sole source of the resolved/evaluated "
-            "output subfolder name, and must match the run_config used "
-            "when resolving these predictions."
-        ),
-    )
+    parser.add_argument("--run_config", type=str, default=None)
 
     apply_run_config_defaults(parser, section="eval")
 
