@@ -25,6 +25,7 @@ RUN apt-get update && \
         python3-pip \
         python3.11-venv \
         pciutils \
+        unzip\
     && rm -rf /var/lib/apt/lists/*
 
 
