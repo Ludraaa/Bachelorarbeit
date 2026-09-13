@@ -4,7 +4,7 @@
 #SBATCH -o=job.log
 #SBATCH -e=job.log
 #SBATCH --time=0-23:59
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:0
 #SBATCH --mem=200000
 ##SBATCH -c 1 # number of cores
 #SBATCH --mail-type=END,FAIL
@@ -54,7 +54,7 @@ for i in $(seq 1 60); do
 done
 echo "=========================================="
 
-RUN_CONFIG=configs/runs/Freebase/WebQSP/sparql.yaml
+RUN_CONFIG=configs/runs/Freebase/WebQSP/sparql_label_fallback.yaml
 
 ENDPOINT_URL=$(python -c "import yaml; print(yaml.safe_load(open('$RUN_CONFIG')).get('endpoint_url', ''))")
 export ENDPOINT_URL

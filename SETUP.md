@@ -15,12 +15,18 @@ Upon mounting an empty external volume to the container, the following folder st
 
 ## Knowledge Base Setup
 
-While any knowledge base works in theory (even WDQS, for example), it is almost mandatory to use a local or at least private instance. This is because the resolve step of the pipeline relies on
+While any knowledge base works in theory (even WDQS, for example), it is pretty much mandatory to use a local or at least private instance. There should be no rate limit and no super short forced query timeout. This is because the resolve step of the pipeline relies on
 (in extreme cases) executing up to thousands of SPARQL queries for every single item. You will hit the rate limit on a public endpoint very quickly.
 
 ### Freebase
 
-While any local variant works, to stay as comparable to the original ChatKBQA as possible, we use the same virtuoso setup they used.
+While any local variant works, to stay as comparable to the original ChatKBQA as possible, we use the same virtuoso setup they used. For ease of use, the MAKEFILE entries `freebase-install`, `freebase-start` and `freebase-stop` are provided. Important: The installation size is around 50GB. Make sure to have enough space on the mounted volume. Running this locally also has some rather high memory requirements (ChatKBQA recommend 100GB), especially next to loading the FACC1 index for the entity linker.
+
+Additionally, the FACC1 index has to be downloaded. Use the MAKEFILE entry `download-facc1`.
+
+### Wikidata
+
+For Wikidata, we recommend setting up a local Qlever instance. More information can be found here: https://docs.qlever.dev/quickstart/
 
 ---
 
@@ -35,9 +41,3 @@ Example download commands of the 3 base models used:
 `hf download Qwen/Qwen2.5-7B --local-dir ./LLMs/Models/Qwen2.5-7b`
 `hf download meta-llama/Llama-2-7b-hf --local-dir ./LLMs/Models/Llama-2-7b`
 `hf download meta-llama/Llama-2-13b-hf --local-dir ./LLMs/Models/Llama-2-13b`
-
----
-
-
-## Freebase Setup
-

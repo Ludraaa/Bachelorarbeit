@@ -1292,5 +1292,85 @@
     "exact_match": 0.7831,
     "assignment_f1": 0.822,
     "hit1": 0.8628
+  },
+  {
+    "timestamp": "2026-09-13T19:33:53.206721+00:00",
+    "resolved_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/WebQSP/predictions/Llama-2-7b_WebQSP-sparql/sparql/resolved/WebQSP_test.sparql.json",
+    "evaluated_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/WebQSP/predictions/Llama-2-7b_WebQSP-sparql/sparql/evaluated/WebQSP_test.sparql.json",
+    "eval_endpoint": "http://localhost:3001/sparql",
+    "gold_answer_source": "live",
+    "gold_live_only": false,
+    "resolve_note": "official run",
+    "eval_note": "official run",
+    "dataset": "WebQSP",
+    "split": "test",
+    "model_id": "Llama-2-7b_WebQSP-sparql",
+    "kb": "freebase",
+    "mode": "sparql",
+    "run_name": "sparql",
+    "linker_combo_id": "ChatKBQA.type_map+ChatKBQA.facc1+ChatKBQA.simple+ChatKBQA.neighborhood",
+    "entity_linker": [
+      "ChatKBQA.type_map",
+      "ChatKBQA.facc1"
+    ],
+    "entity_linker_params": {
+      "ChatKBQA.type_map": {},
+      "ChatKBQA.facc1": {
+        "top_k": 50,
+        "facc_threshold": 0.001
+      }
+    },
+    "predicate_linkers": [
+      "ChatKBQA.simple",
+      "ChatKBQA.neighborhood"
+    ],
+    "predicate_linker_params": {
+      "ChatKBQA.simple": {},
+      "ChatKBQA.neighborhood": {
+        "ke": 15,
+        "te": 0.01,
+        "limit": 10000,
+        "timeout": 300,
+        "model_name": "princeton-nlp/unsup-simcse-roberta-large"
+      }
+    },
+    "beam_limits": [
+      15,
+      15
+    ],
+    "k1_per_pass": [
+      500,
+      50
+    ],
+    "t1_per_pass": [
+      0.0,
+      0.0
+    ],
+    "k2_per_pass": [
+      1,
+      4000
+    ],
+    "t2_per_pass": [
+      0.0,
+      0.0
+    ],
+    "pass_counts": {
+      "ChatKBQA.simple": 1510,
+      "ChatKBQA.neighborhood": 85
+    },
+    "resolve_endpoint": "http://localhost:3001/sparql",
+    "resolve_timestamp": "2026-09-13T19:17:20.759331+00:00",
+    "num_items": 1639,
+    "num_stale": 11,
+    "stale_pct": 0.67,
+    "num_scored": 1628,
+    "num_executable": 1595,
+    "executable_pct": 97.32,
+    "num_exec_error": 0,
+    "num_empty_pred": 0,
+    "num_with_gold": 1628,
+    "exact_match": 0.7199,
+    "assignment_f1": 0.7626,
+    "hit1": 0.8047
   }
 ]

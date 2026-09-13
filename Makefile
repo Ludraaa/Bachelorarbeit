@@ -1,3 +1,4 @@
+```make
 # ============================================================
 # Configuration
 # ============================================================
@@ -27,7 +28,7 @@ endif
         download-wwq \
         download-qald7 \
         download-qald10 \
-        download-lcquad2 
+        download-lcquad2
 
 download-cwq:
 	mkdir -p "$(DATA_DIR)/CWQ/origin"
@@ -82,9 +83,15 @@ download-lcquad2:
 
 .PHONY: freebase-install freebase-start freebase-stop
 
-FREEBASE_DIR   ?= Freebase-Setup
-VIRTUOSO_PORT  ?= 3001
-VIRTUOSO_DB_URL ?= https://www.dropbox.com/s/q38g0fwx1a3lz8q/virtuoso_db.zip?dl=1
+FREEBASE_DIR     ?= Freebase-Setup
+VIRTUOSO_PORT    ?= 3001
+VIRTUOSO_DB_URL  ?= https://www.dropbox.com/s/q38g0fwx1a3lz8q/virtuoso_db.zip?dl=1
+
+# Virtuoso Open Source Edition
+VIRTUOSO_VERSION ?= 7.2.12
+VIRTUOSO_URL     ?= https://github.com/openlink/virtuoso-opensource/archive/refs/tags/v$(VIRTUOSO_VERSION).tar.gz
+VIRTUOSO_TARBALL := $(FREEBASE_DIR)/virtuoso-$(VIRTUOSO_VERSION).tar.gz
+VIRTUOSO_DIR     := $(FREEBASE_DIR)/virtuoso-opensource
 
 freebase-install:
 	@if [ -d "$(FREEBASE_DIR)/.git" ]; then \
@@ -92,6 +99,7 @@ freebase-install:
 	else \
 		git clone https://github.com/dki-lab/Freebase-Setup.git "$(FREEBASE_DIR)"; \
 	fi
+
 	@if [ -d "$(FREEBASE_DIR)/virtuoso_db" ]; then \
 		echo "virtuoso_db already extracted, skipping download"; \
 	else \
@@ -100,11 +108,27 @@ freebase-install:
 		rm "$(FREEBASE_DIR)/virtuoso_db.zip"; \
 	fi
 
+	@if [ -d "$(VIRTUOSO_DIR)" ]; then \
+		echo "Virtuoso $(VIRTUOSO_VERSION) already downloaded, skipping"; \
+	else \
+		curl -fL "$(VIRTUOSO_URL)" -o "$(VIRTUOSO_TARBALL)"; \
+		tar -xzf "$(VIRTUOSO_TARBALL)" -C "$(FREEBASE_DIR)"; \
+		mv "$(FREEBASE_DIR)/virtuoso-opensource-$(VIRTUOSO_VERSION)" "$(VIRTUOSO_DIR)"; \
+		rm "$(VIRTUOSO_TARBALL)"; \
+	fi
+
+	@if [ ! -x "$(VIRTUOSO_DIR)/binsrc/virtuoso/virtuoso-t" ]; then \
+		echo "Building Virtuoso $(VIRTUOSO_VERSION)..."; \
+		cd "$(VIRTUOSO_DIR)" && ./autogen.sh && ./configure && make -j$$(nproc); \
+	fi
+
+	@sed -i 's|^virtuosoPath = .*|virtuosoPath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "virtuoso-opensource")|' "$(FREEBASE_DIR)/virtuoso.py"
+
 freebase-start:
-	cd "$(FREEBASE_DIR)" && python3 virtuoso.py start $(VIRTUOSO_PORT) -d virtuoso_db
+	cd "$(FREEBASE_DIR)" && $(PYTHON) virtuoso.py start $(VIRTUOSO_PORT) -d virtuoso_db
 
 freebase-stop:
-	cd "$(FREEBASE_DIR)" && python3 virtuoso.py stop $(VIRTUOSO_PORT)
+	cd "$(FREEBASE_DIR)" && $(PYTHON) virtuoso.py stop $(VIRTUOSO_PORT)
 
 
 # ============================================================
@@ -143,6 +167,7 @@ resolve:
 eval:
 	$(PYTHON) src/eval_predictions.py --run_config $(RUN_CONFIG)
 
+
 # ============================================================
 # Demos (Wikidata / Qald7)
 # ============================================================
@@ -171,3 +196,4 @@ demo_qald7_no_train: download-qald7
 demo_qald7_no_train_no_generate:
 	$(PYTHON) src/resolve_predictions.py --run_config $(QALD7_DEMO_CONFIG)
 	$(PYTHON) src/eval_predictions.py --run_config $(QALD7_DEMO_CONFIG)
+```
