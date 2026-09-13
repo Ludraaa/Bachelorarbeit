@@ -70,14 +70,18 @@ def _deadline_exceeded(deadline: float | None) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Gold-answer presence check
+
+def _has_gold_answer(item: dict) -> bool:
+    return bool(item.get("answer"))
+
+
+# ---------------------------------------------------------------------------
 # Args
 
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    # NOTE: both were required=True. Changed to optional + require() below
-    # so a run_config's top-level `dataset` / `model_id` can fill these in
-    # (argparse's required=True ignores set_defaults()).
     parser.add_argument("--dataset",   type=str, default=None)
     parser.add_argument("--split",     type=str, default="test")
     parser.add_argument(
@@ -663,12 +667,34 @@ def run_single_pass(
 # ---------------------------------------------------------------------------
 # SPARQL stuff
 
+_LANG_FILTER_RE = re.compile(
+    r"""^FILTER\s*\(\s*
+        (?:
+            !\s*isLiteral\(\?x\)\s*OR\s*lang\(\?x\)\s*=\s*''\s*OR\s*langMatches\(lang\(\?x\),\s*'en'\)
+        |
+            \(\s*\(\s*!\s*isLiteral\(\?x\)\s*\)\s*\|\|\s*\(\s*lang\(\?x\)\s*=\s*""\s*\)\s*\)\s*\|\|\s*langMatches\(lang\(\?x\),\s*"en"\)
+        )
+    \s*\)$""",
+    re.VERBOSE,
+)
+
+_ENTITY_PATTERNS = (
+    re.compile(r'\bns:(m\.[A-Za-z0-9_]+)\b'),                          # chatkbqa_cwq / chatkbqa_webqsp converter output
+    re.compile(r'<http://rdf\.freebase\.com/ns/(m\.[A-Za-z0-9_]+)>'),  # raw sparql-mode beams (full URI)
+)
+
+
 def _entity_label_fallback(sparql: str) -> str | None:
     """
-    Mirrors ChatKBQA's own zero-result retry in aggressive_top_k_eval_new.py's
-    execute_normed_s_expr_from_label_maps()
+    Mirrors ChatKBQA's own zero-result retry. Handles both entity surface
+    forms (ns:m.xxx from the chatkbqa_cwq/chatkbqa_webqsp converters, and
+    full <...ns/m.xxx> URIs from raw sparql-mode beams) and both known
+    FILTER serializations. Freebase/CWQ+WQSP/sparql-mode specific by
+    design — not a general SPARQL rewriter.
     """
-    entities = sorted(set(re.findall(r'\bns:(m\.[A-Za-z0-9_]+)\b', sparql)))
+    entities = sorted(set(
+        m for pat in _ENTITY_PATTERNS for m in pat.findall(sparql)
+    ))
     if not entities:
         return None
 
@@ -680,11 +706,11 @@ def _entity_label_fallback(sparql: str) -> str | None:
         addlines.append(f'{var} rdfs:label ?en{i} . ')
         addlines.append(f'FILTER (langMatches( lang(?en{i}), "EN" ) )')
         rewritten = rewritten.replace(f'ns:{ent}', var)
+        rewritten = rewritten.replace(f'<http://rdf.freebase.com/ns/{ent}>', var)
 
-    anchor = "FILTER (!isLiteral(?x) OR lang(?x) = '' OR langMatches(lang(?x), 'en'))"
     lines = rewritten.split('\n')
     for idx, line in enumerate(lines):
-        if line.strip() == anchor:
+        if _LANG_FILTER_RE.match(line.strip()):
             lines = lines[:idx + 1] + addlines + lines[idx + 1:]
             return '\n'.join(lines)
     return None
@@ -871,6 +897,7 @@ def _new_runtime_agg(predicate_linker_ids: list[str]) -> dict:
         agg["by_resolution"][lid] = {"count": 0, "total_sec": 0.0}
     agg["by_resolution"]["_unresolved"] = {"count": 0, "total_sec": 0.0}
     agg["by_resolution"]["_timeout"] = {"count": 0, "total_sec": 0.0}
+    agg["by_resolution"]["_skipped_no_gold"] = {"count": 0, "total_sec": 0.0}
     return agg
 
 
@@ -879,10 +906,13 @@ def _record_runtime(
     item_runtime_sec: float,
     winning_pass_linker: str | None,
     timed_out: bool = False,
+    skipped: bool = False,
 ) -> None:
     agg["total_count"] += 1
     agg["total_sec"] += item_runtime_sec
-    if timed_out:
+    if skipped:
+        key = "_skipped_no_gold"
+    elif timed_out:
         key = "_timeout"
     elif winning_pass_linker is not None:
         key = winning_pass_linker
@@ -1023,6 +1053,7 @@ def main():
     pass_counts = {lid: 0 for lid in predicate_linker_ids}
     executable_count = 0
     timeout_count = 0
+    skipped_count = 0
     runtime_agg = _new_runtime_agg(predicate_linker_ids)
 
     for r in existing_results:
@@ -1035,12 +1066,16 @@ def main():
         if r.get("timed_out"):
             timeout_count += 1
 
+        if r.get("skipped_no_gold"):
+            skipped_count += 1
+
         if "item_runtime_sec" in r and r["item_runtime_sec"] is not None:
             _record_runtime(
                 runtime_agg,
                 r["item_runtime_sec"],
                 r.get("winning_pass_linker"),
                 timed_out=bool(r.get("timed_out")),
+                skipped=bool(r.get("skipped_no_gold")),
             )
 
     if n_done > 0:
@@ -1051,7 +1086,7 @@ def main():
         print("All items already processed. Finalising JSON output.")
         meta = _build_meta(args, entity_linker_ids, predicate_linker_ids, beam_limits,
                            k1_list, t1_list, k2_list, t2_list,
-                           len(data), executable_count, timeout_count, pass_counts,
+                           len(data), executable_count, timeout_count, skipped_count, pass_counts,
                            entity_linker_params, predicate_linker_params,
                            runtime_agg, args.label_fallback, run_stem, linker_combo_id)
         out = _finalize_to_json(jsonl_path, meta)
@@ -1076,6 +1111,7 @@ def main():
     print(f"  k2 per pass:      {[_get_pass_val(k2_list, i) for i in range(n_passes)]}")
     print(f"  t2 per pass:      {[_get_pass_val(t2_list, i) for i in range(n_passes)]}")
     print(f"  Item time limit:  {args.item_time_limit_sec if args.item_time_limit_sec is not None else 'none'}")
+    print(f"  Skip no-gold items: enabled (empty 'answer' → instant skip, not executable; matches eval.py's stale rule)")
     print(f"  Endpoint:         {ENDPOINT_URL}")
     print(f"  Run folder:       {run_stem}")
     print(f"  Output (JSONL):   {jsonl_path}\n")
@@ -1086,6 +1122,52 @@ def main():
             continue
 
         question = item["question"]
+
+        # Items with no saved gold answer can never be scored by eval.py
+        # (its is_stale check is exactly `not item["answer"]`), so we skip
+        # the entire linking/permutation/SPARQL pipeline for them and just
+        # record them as not executable.
+        if not _has_gold_answer(item):
+            _log(f"item {item_idx} SKIP (no gold answer) | ID={item.get('ID')} | '{question[:60]}'")
+
+            result = {
+                **item,
+                "executed_query":              None,
+                "executed_beam_rank":          None,
+                "entity_map_used":             None,
+                "predicate_map_used":          None,
+                "winning_entity_perm_idx":     None,
+                "winning_predicate_perm_idx":  None,
+                "executable":                  False,
+                "timed_out":                   False,
+                "skipped_no_gold":             True,
+                "winning_pass_index":          None,
+                "winning_pass_linker":         None,
+                "item_runtime_sec":            0.0,
+                "pass_runtimes_sec":           {},
+            }
+            _append_jsonl(jsonl_path, result)
+
+            if args.debug:
+                debug_entry = {
+                    "id":                  item.get("ID"),
+                    "question":            question,
+                    "gold_entity_map":     item.get("gold_entity_map", {}),
+                    "gold_relation_map":   item.get("gold_relation_map", {}),
+                    "gold_sexpr":          item.get("sexpr_with_labels", ""),
+                    "winning_pass_index":  None,
+                    "winning_pass_linker": None,
+                    "timed_out":           False,
+                    "skipped_no_gold":     True,
+                    "item_runtime_sec":    0.0,
+                    "passes":              [],
+                }
+                _append_jsonl(debug_jsonl_path, debug_entry)
+
+            skipped_count += 1
+            _record_runtime(runtime_agg, 0.0, None, timed_out=False, skipped=True)
+            continue
+
         beams    = item["predict"]
 
         _log(f"item {item_idx} START | ID={item.get('ID')} | n_beams={len(beams)} | '{question[:60]}'")
@@ -1156,6 +1238,7 @@ def main():
             "winning_predicate_perm_idx":  winning_predicate_perm_idx,
             "executable":                  winning.found,
             "timed_out":                   winning.timed_out,
+            "skipped_no_gold":             False,
             "winning_pass_index":          winning_pass_index,
             "winning_pass_linker":         winning_pass_linker,
             "item_runtime_sec":            round(item_runtime_sec, 4),
@@ -1175,6 +1258,7 @@ def main():
                 "winning_pass_index":  winning_pass_index,
                 "winning_pass_linker": winning_pass_linker,
                 "timed_out":           winning.timed_out,
+                "skipped_no_gold":     False,
                 "item_runtime_sec":    round(item_runtime_sec, 4),
                 "passes": [
                     {
@@ -1199,7 +1283,7 @@ def main():
     num_items = len(data)
     meta = _build_meta(args, entity_linker_ids, predicate_linker_ids, beam_limits,
                        k1_list, t1_list, k2_list, t2_list,
-                       num_items, executable_count, timeout_count, pass_counts,
+                       num_items, executable_count, timeout_count, skipped_count, pass_counts,
                        entity_linker_params, predicate_linker_params,
                        runtime_agg, args.label_fallback, run_stem, linker_combo_id)
 
@@ -1212,6 +1296,7 @@ def main():
     print(f"\nDone. {executable_count}/{num_items} executable.")
     if args.item_time_limit_sec is not None:
         print(f"  Timed out (skipped): {timeout_count}/{num_items}")
+    print(f"  Skipped (no gold answer): {skipped_count}/{num_items}")
     for lid, cnt in pass_counts.items():
         pct = round(cnt / num_items * 100, 1) if num_items else 0
         print(f"  Pass '{lid}': {cnt} items resolved ({pct}%)")
@@ -1237,6 +1322,7 @@ def _build_meta(
     num_items: int,
     executable_count: int,
     timeout_count: int,
+    skipped_count: int,
     pass_counts: dict,
     entity_linker_params: dict,
     predicate_linker_params: dict,
@@ -1274,6 +1360,8 @@ def _build_meta(
         "executable_pct":   round(executable_count / num_items * 100, 2) if num_items else 0.0,
         "num_timed_out":    timeout_count,
         "timed_out_pct":    round(timeout_count / num_items * 100, 2) if num_items else 0.0,
+        "num_skipped_no_gold": skipped_count,
+        "skipped_no_gold_pct": round(skipped_count / num_items * 100, 2) if num_items else 0.0,
         "pass_counts":      pass_counts,
         "runtime":          _runtime_summary(runtime_agg),
     }

@@ -27,9 +27,7 @@ endif
         download-wwq \
         download-qald7 \
         download-qald10 \
-        download-spinach \
-        download-lcquad2 \
-		download-wdql
+        download-lcquad2 
 
 download-cwq:
 	mkdir -p "$(DATA_DIR)/CWQ/origin"
@@ -61,7 +59,7 @@ download-qald7:
 	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/qald7/train.jsonl" \
 		-o "$(DATA_DIR)/Qald7/origin/Qald7_train.jsonl"
 	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/qald7/test.jsonl" \
-		-o "$(DATA_DIR)/Qald7/origin/Qald_test.jsonl"
+		-o "$(DATA_DIR)/Qald7/origin/Qald7_test.jsonl"
 
 download-qald10:
 	mkdir -p "$(DATA_DIR)/Qald10/origin"
@@ -70,13 +68,6 @@ download-qald10:
 	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/qald10/test.jsonl" \
 		-o "$(DATA_DIR)/Qald10/origin/Qald10_test.jsonl"
 
-download-spinach:
-	mkdir -p "$(DATA_DIR)/Spinach/origin"
-	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/spinach/val.jsonl" \
-		-o "$(DATA_DIR)/Spinach/origin/Spinach_dev.jsonl"
-	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/spinach/test.jsonl" \
-		-o "$(DATA_DIR)/Spinach/origin/Spinach_test.jsonl"
-
 download-lcquad2:
 	mkdir -p "$(DATA_DIR)/Lcquad2/origin"
 	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/lcquad2-new/train.jsonl" \
@@ -84,14 +75,53 @@ download-lcquad2:
 	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/lcquad2-new/test.jsonl" \
 		-o "$(DATA_DIR)/Lcquad2/origin/Lcquad2_test.jsonl"
 
-download-wdql:
-	mkdir -p "$(DATA_DIR)/WDQL/origin"
-	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/wdql/train.jsonl" \
-		-o "$(DATA_DIR)/WDQL/origin/WDQL_train.jsonl"
-	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/wdql/val.jsonl" \
-		-o "$(DATA_DIR)/WDQL/origin/WDQL_dev.jsonl"
-	curl -fL "https://ad-publications.cs.uni-freiburg.de/grisp/benchmark/wikidata/wdql/test.jsonl" \
-		-o "$(DATA_DIR)/WDQL/origin/WDQL_test.jsonl"
+
+# ============================================================
+# Freebase KG Setup
+# ============================================================
+#
+# Mirrors the "Freebase KG Setup" steps from the ChatKBQA README
+# (https://github.com/LHRLAB/ChatKBQA/blob/main/README.md), which in
+# turn point at https://github.com/dki-lab/Freebase-Setup.
+#
+# NOTE: the README's own step 1 code block only shows `cd Freebase-Setup`
+# — the actual clone command is only described in prose ("Clone from
+# dki-lab/Freebase-Setup"), not shown literally. Filled in below.
+#
+# NOTE: the README extracts the downloaded virtuoso_db.zip with
+# `tar -zxvf`, not `unzip`, despite the .zip extension — kept exactly
+# as documented rather than silently switched to unzip, in case the
+# file is actually gzipped tar content under a misleading name.
+#
+# The Virtuoso DB download is 53GB+ (README's own figure) — expect
+# this to take a while, and make sure FREEBASE_DIR has the space.
+
+.PHONY: freebase-install freebase-start freebase-stop
+
+FREEBASE_DIR   ?= Freebase-Setup
+VIRTUOSO_PORT  ?= 3001
+VIRTUOSO_DB_URL ?= https://www.dropbox.com/s/q38g0fwx1a3lz8q/virtuoso_db.zip?dl=1
+
+freebase-install:
+	@if [ -d "$(FREEBASE_DIR)/.git" ]; then \
+		echo "$(FREEBASE_DIR) already cloned, skipping"; \
+	else \
+		git clone https://github.com/dki-lab/Freebase-Setup.git "$(FREEBASE_DIR)"; \
+	fi
+	@if [ -d "$(FREEBASE_DIR)/virtuoso_db" ]; then \
+		echo "virtuoso_db already extracted, skipping download"; \
+	else \
+		curl -fL "$(VIRTUOSO_DB_URL)" -o "$(FREEBASE_DIR)/virtuoso_db.zip"; \
+		tar -zxvf "$(FREEBASE_DIR)/virtuoso_db.zip" -C "$(FREEBASE_DIR)"; \
+		rm "$(FREEBASE_DIR)/virtuoso_db.zip"; \
+	fi
+
+freebase-start:
+	cd "$(FREEBASE_DIR)" && python3 virtuoso.py start $(VIRTUOSO_PORT) -d virtuoso_db
+
+freebase-stop:
+	cd "$(FREEBASE_DIR)" && python3 virtuoso.py stop $(VIRTUOSO_PORT)
+
 
 # ============================================================
 # Pipeline

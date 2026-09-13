@@ -60,7 +60,7 @@ ENDPOINT_URL=$(python -c "import yaml; print(yaml.safe_load(open('$RUN_CONFIG'))
 export ENDPOINT_URL
 echo "Resolved ENDPOINT_URL: $ENDPOINT_URL"
 
-make generate resolve eval RUN_CONFIG=$RUN_CONFIG
+make resolve eval RUN_CONFIG=$RUN_CONFIG
 
 echo "====================="
 echo "End time: $(date)"

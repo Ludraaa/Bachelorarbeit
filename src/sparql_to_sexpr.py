@@ -288,9 +288,9 @@ def process_split(
 
         if not no_gold_exec:
             if not no_mismatch_analysis:
-                # execute the untouched, as-given gold query
+                # execute gold query
                 if sparql_query and endpoint_url:
-                    raw_result = execute_sparql(sparql_query, endpoint_url)
+                    raw_result = execute_sparql(sparql_query, endpoint_url, timeout=300)
                     if raw_result is not None:
                         raw_rows = bindings_to_rows(raw_result)
                         entry["gold_raw_answer"] = raw_rows
@@ -301,9 +301,9 @@ def process_split(
                         entry["gold_raw_exec_failed"] = True
                         raw_exec_failed += 1
 
-            # execute the normalised gold query (this is what downstream scoring uses)
+            # execute the normalised gold query
             if normed and endpoint_url:
-                normed_result = execute_sparql(normed, endpoint_url)
+                normed_result = execute_sparql(normed, endpoint_url, timeout=300)
                 if normed_result is not None:
                     normed_rows = bindings_to_rows(normed_result)
                     entry["answer"] = normed_rows

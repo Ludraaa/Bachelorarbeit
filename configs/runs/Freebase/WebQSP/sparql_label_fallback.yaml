@@ -21,7 +21,7 @@ resolve:
   k2_per_pass: "1,4000"
   beam_limits: "15"
   linker_params: {}
-  label_fallback: false
+  label_fallback: true
   debug: true
 
 eval:

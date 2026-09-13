@@ -71,6 +71,11 @@ COPY SETUP.md SETUP.md
 COPY README.md README.md
 COPY configs/ configs/
 
+# Untouched reference copy of the repo's default configs. Used at
+# container start to seed any config files missing from a mounted
+# Configs/ dir, without ever overwriting user-created/edited ones.
+COPY configs/ /opt/repo-configs/
+
 COPY src/ /workspace/src
 
 ENV PYTHONPATH=/workspace
@@ -89,12 +94,11 @@ RUN mkdir -p \
     /workspace/.pip-cache \
     /workspace/LLMs/data \
     /workspace/LLMs/Models \
-    /workspace/LLMs/MyModels && \
+    /workspace/LLMs/MyModels \
+    /workspace/results \
+    /workspace/Freebase-Setup && \
     echo '{}' > /workspace/LLMs/data/dataset_info.json && \
-    chown -R appuser:appuser \
-        /workspace/data \
-        /workspace \
-        /workspace/LLMs
+    chown -R appuser:appuser /workspace /opt/repo-configs
 
 
 # ============================================================
@@ -155,11 +159,8 @@ CMD ["/bin/bash", "--rcfile", "bashrc"]
 # Run
 # ============================================================
 
-# Without external data/models:
-# wharfer run -it --name luis-drayer-thesis luis-drayer-thesis
+# no initial data
+# wharfer run -it -v .:/extern/data --name luis-drayer-thesis luis-drayer-thesis
 
-# With external data:
-# wharfer run -it -v /path/to/data:/data --name luis-drayer-thesis luis-drayer-thesis
-
-# With external data, training data, and models:
-# wharfer run -it -v /path/to/data:/workspace/data -v /path/to/llms-data:/workspace/LLMs/data -v /path/to/models:/workspace/LLMs/Models -v /path/to/my-models:/workspace/LLMs/MyModels --name luis-drayer-thesis luis-drayer-thesis
+# full initial data (requires uni pc)
+# wharfer run -it -v /nfs/students/luis-drayer:/extern/data --name luis-drayer-thesis luis-drayer-thesis

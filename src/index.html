@@ -249,58 +249,6 @@
     background: var(--accent); color: #0b0f14; border-color: var(--accent);
   }
 
-  .group-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    background: var(--accent2);
-    border: 1px solid var(--accent2);
-    color: #0b0f14;
-    font-family: var(--sans);
-    font-size: 12px;
-    font-weight: 700;
-    padding: 5px 11px;
-    border-radius: 14px;
-    margin-right: 8px;
-    cursor: pointer;
-    box-shadow: 0 0 0 0 rgba(129,140,248,0);
-    transition: transform .1s, box-shadow .15s, background .15s;
-  }
-  .group-toggle:hover {
-    background: var(--accent);
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(56,189,248,.25);
-  }
-  .group-toggle:active { transform: scale(0.96); }
-  .group-toggle .gt-arrow { font-size: 13px; line-height: 1; }
-
-  .sub-row-marker {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 22px;
-    height: 22px;
-    padding: 0 5px;
-    border-radius: 7px;
-    background: rgba(129,140,248,.16);
-    border: 1px solid rgba(129,140,248,.4);
-    color: var(--accent2);
-    font-size: 14px;
-    font-weight: 700;
-    margin-right: 8px;
-    vertical-align: middle;
-  }
-
-  tbody tr.sub-row {
-    background: rgba(255,255,255,.015);
-  }
-  tbody tr.sub-row:hover { background: var(--surface2); }
-  tbody tr.sub-row td {
-    color: var(--muted);
-    border-bottom: 1px dashed var(--border);
-  }
-  tbody tr.sub-row td.ts-cell { padding-left: 16px; }
-
   /* Metric cells */
   .metric-cell {
     font-weight: 600;
@@ -344,6 +292,15 @@
 
   /* Model cell */
   .model-cell { font-weight: 500; color: #fff; }
+
+  /* Dataset / run cells */
+  .dataset-cell { color: var(--text); }
+  .run-cell {
+    color: var(--muted);
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 
   /* Notes cell */
   .note-cell {
@@ -408,6 +365,8 @@
   /* Column sizing */
   .col-meta      { min-width: 150px; }
   .col-model     { min-width: 220px; }
+  .col-dataset   { min-width: 110px; }
+  .col-run       { min-width: 140px; }
   .col-mode      { min-width: 80px; }
   .col-linker    { min-width: 100px; }
   .col-endpoint  { min-width: 150px; }
@@ -590,6 +549,8 @@
       <thead>
         <tr>
           <th class="col-meta"    data-col="timestamp">Timestamp</th>
+          <th class="col-run"     data-col="run_name">Run</th>
+          <th class="col-dataset" data-col="dataset">Dataset</th>
           <th class="col-model"   data-col="model_id">Model</th>
           <th class="col-mode"    data-col="mode">Mode</th>
           <th class="col-er"      data-col="_er_sort" title="Entity Resolution: k1/t1 thresholds and entity linker chain (hover the ⓘ on a linker for its specific params)">ER</th>
@@ -631,7 +592,6 @@ let allData = [];
 let currentFilename = '';
 let sortCol = 'timestamp';
 let sortDir = 'desc';
-let expandedGroups = new Set();
 
 // Only these three drive sorting / "best" highlighting / the stats bar.
 // _af1 is assignment_f1, falling back to legacy f1 where assignment_f1 wasn't recorded.
@@ -847,9 +807,6 @@ function linkerChainRow(linkerNames, paramsMap) {
 }
 
 function formatERCell(d) {
-  const passHtml = d._passCounts
-    ? `<div><span class="pass-pill" title="pass counts: ${esc(Object.entries(d._passCounts).map(([k,v]) => `${k}: ${v}`).join(' | '))}">passes: ${Object.values(d._passCounts).join('/')}</span></div>`
-    : '';
   return `<td class="er-cell">
     ${ktRow('k1', d._k1, 't1', d._t1)}
     ${linkerChainRow(d._entityLinker, d._entityLinkerParams)}
@@ -925,48 +882,10 @@ function af1Cell(d, best) {
   </td>`;
 }
 
-// ── Grouping ─────────────────────────────────────────────────────────────────
-// Runs that share everything except thresholds (k1/t1/k2/t2/beam_limits) and
-// notes are collapsed into one row. The row shown is the best member by
-// assignment_f1 (falling back to legacy f1, then most recent); the rest sit
-// behind the expand toggle.
-function groupIdentity(d) {
-  return JSON.stringify({
-    model:    d.model_id ?? null,
-    mode:     d.mode ?? null,
-    dataset:  d.dataset ?? null,
-    split:    d.split ?? null,
-    kb:       d.kb ?? null,
-    entity:   normLinker(d._entityLinker),
-    pred:     normLinker(d._predLinker),
-    endpoint: d.eval_endpoint ?? null,
-  });
-}
-
-function buildGroups(rows) {
-  const map = new Map();
-  rows.forEach(d => {
-    const key = groupIdentity(d);
-    if (!map.has(key)) map.set(key, []);
-    map.get(key).push(d);
-  });
-  return [...map.entries()].map(([key, members]) => {
-    const ranked = [...members].sort((a, b) => {
-      const av = a._af1 ?? -Infinity, bv = b._af1 ?? -Infinity;
-      if (bv !== av) return bv - av;
-      return new Date(b.timestamp) - new Date(a.timestamp);
-    });
-    return { key, best: ranked[0], others: ranked.slice(1) };
-  });
-}
-
 // ── Rendering ────────────────────────────────────────────────────────────────
 function renderTable() {
   const rows = filteredData();
-  const groups = buildGroups(rows);
-  const repRows = groups.map(g => g.best);
-  const groupByRepId = new Map(groups.map(g => [g.best._id, g]));
-  const sorted = sortedData(repRows);
+  const sorted = sortedData(rows);
 
   document.querySelector('.header-title p').textContent =
     currentFilename + ' · ' + allData.length + ' entries';
@@ -982,11 +901,10 @@ function renderTable() {
     best[m] = vals.length ? Math.max(...vals) : null;
   });
 
-  renderStats(rows, best, groups.length);
+  renderStats(rows, best);
 
   document.getElementById('result-count').textContent =
-    groups.length + ' / ' + allData.length + ' entries'
-    + (rows.length !== groups.length ? ` (${rows.length} runs)` : '');
+    rows.length + ' / ' + allData.length + ' entries';
 
   const tbody  = document.getElementById('table-body');
   const empty  = document.getElementById('empty-state');
@@ -1000,14 +918,7 @@ function renderTable() {
 
   const maxTs = Math.max(...allData.map(d => new Date(d.timestamp).getTime()));
 
-  tbody.innerHTML = sorted.map(d => {
-    const group = groupByRepId.get(d._id);
-    let html = renderRow(d, best, maxTs, group, false);
-    if (group && group.others.length > 0 && expandedGroups.has(group.key)) {
-      html += group.others.map(o => renderRow(o, best, maxTs, null, true)).join('');
-    }
-    return html;
-  }).join('');
+  tbody.innerHTML = sorted.map(d => renderRow(d, best, maxTs)).join('');
 }
 
 // Deterministic color per mode string, so any number of modes get a
@@ -1031,7 +942,7 @@ function modeBadgeHtml(mode) {
   return `<span class="badge" style="background:${bg};color:${fg};border:1px solid ${border}">${esc(mode)}</span>`;
 }
 
-function renderRow(d, best, maxTs, group, isSubRow) {
+function renderRow(d, best, maxTs) {
   const ts = new Date(d.timestamp);
   const isFresh = (maxTs - ts.getTime()) < 3600_000 * 6;
   const tsStr = ts.toLocaleString('sv-SE', { timeZone: 'UTC' })
@@ -1039,16 +950,10 @@ function renderRow(d, best, maxTs, group, isSubRow) {
 
   const modeBadge = modeBadgeHtml(d.mode);
 
-  const groupSize = group ? group.others.length + 1 : 0;
-  const isExpanded = group && expandedGroups.has(group.key);
-  const groupToggle = (group && group.others.length > 0)
-    ? `<span class="group-toggle" data-group-key="${esc(group.key)}"
-         title="${group.others.length} other run${group.others.length > 1 ? 's' : ''} with the same setup — different thresholds or notes. Showing the best by assignment F1."><span class="gt-arrow">${isExpanded ? '▾' : '▸'}</span> ${groupSize} runs</span>`
-    : '';
-  const subMarker = isSubRow ? `<span class="sub-row-marker">↳</span>` : '';
-
-  return `<tr data-id="${d._id}" class="${isSubRow ? 'sub-row' : ''}">
-    <td class="ts-cell">${subMarker}${groupToggle}${tsStr}${isFresh ? '<span class="fresh-badge">NEW</span>' : ''}</td>
+  return `<tr data-id="${d._id}">
+    <td class="ts-cell">${tsStr}${isFresh ? '<span class="fresh-badge">NEW</span>' : ''}</td>
+    <td class="run-cell" title="${esc(d.run_name || '')}">${esc(d.run_name || '—')}</td>
+    <td class="dataset-cell" title="${esc(d.dataset || '')}">${esc(d.dataset || '—')}</td>
     <td class="model-cell" title="${esc(d.model_id || '')}">${esc(d.model_id || '—')}</td>
     <td>${modeBadge}</td>
     ${formatERCell(d)}
@@ -1069,7 +974,7 @@ function renderRow(d, best, maxTs, group, isSubRow) {
 }
 
 // ── Stats bar ────────────────────────────────────────────────────────────────
-function renderStats(rows, best, groupCount) {
+function renderStats(rows, best) {
   const bar = document.getElementById('stats-bar');
   if (rows.length === 0) { bar.innerHTML = ''; return; }
 
@@ -1088,7 +993,7 @@ function renderStats(rows, best, groupCount) {
   }
 
   bar.innerHTML = [
-    chip('Runs',       groupCount,          rows.length + ' runs', false),
+    chip('Runs',       rows.length,         'in selection', false),
     chip('Best AsgnF1',best['_af1'],        'in selection', true),
     chip('Avg AsgnF1', avgMetric('_af1'),   'in selection', false),
     chip('Best Hit@1', best['hit1'],        'in selection', false),
@@ -1096,17 +1001,8 @@ function renderStats(rows, best, groupCount) {
   ].join('');
 }
 
-// ── Row click → toggle group, or open inspector ─────────────────────────────
+// ── Row click → open inspector ──────────────────────────────────────────────
 document.getElementById('table-body').addEventListener('click', (e) => {
-  const toggle = e.target.closest('.group-toggle');
-  if (toggle) {
-    e.stopPropagation();
-    const key = toggle.dataset.groupKey;
-    if (expandedGroups.has(key)) expandedGroups.delete(key);
-    else expandedGroups.add(key);
-    renderTable();
-    return;
-  }
   const tr = e.target.closest('tr[data-id]');
   if (tr) openInspector(tr.dataset.id);
 });

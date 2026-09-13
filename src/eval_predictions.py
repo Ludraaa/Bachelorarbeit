@@ -80,6 +80,11 @@ def parse_args():
 
     parser.add_argument("--get-live-gold", action="store_true", default=False,
                         help="Execute the gold SPARQL live instead of using stored answers.")
+    parser.add_argument("--live_only", action="store_true", default=False,
+                        help="Ignore saved gold answers entirely — only respect live-executed "
+                             "gold answers. Any item whose gold SPARQL cannot be normalised, "
+                             "fails to execute, or returns no rows live becomes 'stale' instead "
+                             "of falling back to the saved answer. Requires --get-live-gold.")
 
     parser.add_argument("--ledger", default=_DEFAULT_LEDGER,
                         help="Path to the central results ledger JSON.")
@@ -107,6 +112,10 @@ def parse_args():
     args = parser.parse_args()
     require(args, "dataset", "split", "mode", "model_id", "entity_linkers", "predicate_linkers", "run_config")
     validate_choice(args, "mode", _MODES)
+
+    if args.live_only and not args.get_live_gold:
+        parser.error("--live_only requires --get-live-gold to also be set.")
+
     return args
 
 
@@ -188,16 +197,27 @@ def score(pred: list[list[str]], gold: list[list[str]]):
 # --------------------------------------------
 # Gold answer resolution
 
-def get_gold_answers(item: dict, endpoint: str, timeout: int, get_live_gold: bool, common_prefixes) -> tuple[list[list[str]], str]: # answers, note
+def get_gold_answers(
+    item: dict,
+    endpoint: str,
+    timeout: int,
+    get_live_gold: bool,
+    live_only: bool,
+    common_prefixes,
+) -> tuple[list[list[str]], str]:  # answers, note
     raw_sparql = item.get("sparql", "")
     saved = ensure_rows(item.get("answer", []))
 
     if not get_live_gold or not raw_sparql:
+        if live_only:
+            return [], "empty"
         return saved, "saved"
 
     normed, normed_err = normalise_gold_sparql(raw_sparql, common_prefixes)
 
     if not normed:
+        if live_only:
+            return [], "empty"
         return (saved, "saved_fallback") if saved else ([], "empty")
 
     raw = execute_sparql(normed, endpoint, timeout)
@@ -207,7 +227,9 @@ def get_gold_answers(item: dict, endpoint: str, timeout: int, get_live_gold: boo
         if rows:
             return rows, "live"
 
-    # Live query returned nothing
+    # Live query returned nothing (or failed to execute)
+    if live_only:
+        return [], "empty"
     return (saved, "saved_fallback") if saved else ([], "empty")
 
 
@@ -757,6 +779,8 @@ def main():
           f"/ {file_meta.get('entity_linker')}+{predicate_linkers_str}")
 
     gold_source_label = "live SPARQL execution" if args.get_live_gold else "saved"
+    if args.live_only:
+        gold_source_label += " (strict — saved fallback disabled)"
     print(f"  Gold answers:  {gold_source_label}")
 
     if args.max_samples:
@@ -783,7 +807,7 @@ def main():
 
         # get gold answers + source
         gold_rows, gold_src = get_gold_answers(
-            item, args.endpoint_url, args.timeout, args.get_live_gold, common_prefixes
+            item, args.endpoint_url, args.timeout, args.get_live_gold, args.live_only, common_prefixes
         )
         gold_source_counts[gold_src] += 1
 
@@ -896,6 +920,7 @@ def main():
             "eval_timestamp":     datetime.now(timezone.utc).isoformat(),
             "eval_endpoint":      args.endpoint_url,
             "gold_answer_source": "live" if args.get_live_gold else "saved",
+            "gold_live_only":     args.live_only,
             "eval_note":          args.note,
             **aggregate,
         },
@@ -912,6 +937,7 @@ def main():
         "evaluated_file": str(eval_out.resolve()),
         "eval_endpoint": args.endpoint_url,
         "gold_answer_source": "live" if args.get_live_gold else "saved",
+        "gold_live_only": args.live_only,
         "resolve_note": file_meta.get("note", ""),
         "eval_note": args.note,
         "dataset": file_meta.get("dataset"),

@@ -1,5 +1,5 @@
 ### Model
-model_name_or_path: LLMs/Models/Qwen25-7b-hf/
+model_name_or_path: LLMs/Models/Qwen25-7b/
 
 ### Method
 stage: sft
