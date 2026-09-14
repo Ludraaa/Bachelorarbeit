@@ -25,8 +25,17 @@ RUN apt-get update && \
         python3-pip \
         python3.11-venv \
         pciutils \
-        unzip\
+        unzip \
+        autoconf \
+        automake \
+        libtool \
+        bison \
+        flex \
+        gawk \
+        gperf \
+        pkg-config \
     && rm -rf /var/lib/apt/lists/*
+
 
 
 # ============================================================
