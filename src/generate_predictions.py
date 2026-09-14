@@ -169,6 +169,17 @@ def _check_or_write_manifest(run_dir: str, manifest: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Fresh-start helper
+
+def _reset_if_already_finished(out_path: str, ckpt_path: str) -> None:
+    if os.path.exists(out_path):
+        print(f"Final output already exists ({out_path}) — starting fresh.")
+        os.remove(out_path)
+        if os.path.exists(ckpt_path):
+            os.remove(ckpt_path)
+
+
+# ---------------------------------------------------------------------------
 # Metadata builder
 
 def _build_meta(
@@ -311,6 +322,8 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     out_path   = os.path.join(out_dir, f"{run_name}.json")
     ckpt_path  = os.path.join(out_dir, f"{run_name}.ckpt.jsonl")
+
+    _reset_if_already_finished(out_path, ckpt_path)
 
     _check_or_write_manifest(out_dir, _run_manifest_dict(args))
 

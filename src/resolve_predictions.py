@@ -257,6 +257,26 @@ def _check_or_write_manifest(run_dir: str, manifest: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Fresh-start helper
+
+def _reset_if_already_finished(
+    jsonl_path: str,
+    json_path: str,
+    debug_jsonl_path: str | None,
+    debug_json_path: str | None,
+) -> None:
+    if os.path.exists(json_path):
+        print(f"Final output already exists ({json_path}) — starting fresh.")
+        os.remove(json_path)
+        if os.path.exists(jsonl_path):
+            os.remove(jsonl_path)
+        if debug_json_path and os.path.exists(debug_json_path):
+            os.remove(debug_json_path)
+        if debug_jsonl_path and os.path.exists(debug_jsonl_path):
+            os.remove(debug_jsonl_path)
+
+
+# ---------------------------------------------------------------------------
 # JSONL helpers
 
 def _load_existing_jsonl(path: str) -> tuple[list[dict], int]:
@@ -1009,6 +1029,8 @@ def main():
 
     debug_jsonl_path = jsonl_path.replace(".jsonl", ".debug.jsonl") if args.debug else None
     debug_json_path  = jsonl_path.replace(".jsonl", ".debug.json")  if args.debug else None
+
+    _reset_if_already_finished(jsonl_path, json_path, debug_jsonl_path, debug_json_path)
 
     # ------------------------------------------------------------------
     # run-folder identity check: catch a reused run_config whose

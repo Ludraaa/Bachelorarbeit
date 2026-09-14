@@ -655,7 +655,7 @@ eval:
 
 .PHONY: demo_qald7_full demo_qald7_no_train demo_qald7_no_train_no_generate
 
-QALD7_DEMO_CONFIG := configs/runs/Wikidata/Qald7/grisp.yaml
+QALD7_DEMO_CONFIG := configs/runs/Wikidata/Qald7/sparql.yaml
 QALD7_DEMO_TRAINING_CONFIG := $(shell $(PYTHON) -c "import yaml; print(yaml.safe_load(open('$(QALD7_DEMO_CONFIG)'))['training_config'])")
 
 demo_qald7_full: download-qald7
