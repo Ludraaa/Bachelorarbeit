@@ -27,6 +27,8 @@ link_external "Configs" "/workspace/configs"
 
 source /workspace/env.sh
 
+python3.11 -c "import nltk; nltk.data.find('tokenizers/punkt_tab')" 2>/dev/null || python3.11 -c "import nltk; nltk.download('punkt_tab')"
+
 echo
 echo 'Welcome to this Docker container, type "make help" to get some help'
 echo 'If this is your first time, make sure to "cat SETUP.md" as well.'
