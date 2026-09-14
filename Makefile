@@ -694,6 +694,34 @@ FREEBASE_DIR     ?= Freebase-Setup
 VIRTUOSO_PORT    ?= 3001
 VIRTUOSO_DB_URL  ?= https://www.dropbox.com/s/q38g0fwx1a3lz8q/virtuoso_db.zip?dl=1
 
+# Virtuoso Open Source Edition — using a prebuilt release binary rather
+# than building from source. Virtuoso 7.2.x's build system predates
+# OpenSSL 1.1+ (its own docs cap supported OpenSSL at 1.0.2), so
+# `./configure` fails against Ubuntu 22.04's OpenSSL 3.x with a
+# misleading "OpenSSL version 0.9.8e or greater is required" error even
+# though 3.x is obviously newer — the version-number encoding changed
+# between OpenSSL major versions and the old configure script can't
+# parse it. Rather than patch that ancient build system or juggle a
+# second OpenSSL install, we use OpenLink's official prebuilt binary
+# (built against glibc 2.5, which per their own docs works on any newer
+# glibc — Ubuntu 22.04 ships 2.35).
+#
+# NOTE: this virtuoso_db dump's exact origin Virtuoso version is
+# undocumented upstream. The DB format has generally stayed compatible
+# across the 7.2.x line, but if `freebase-start` fails to load it,
+# try an older VIRTUOSO_VERSION (e.g. 7.2.6.1) — see
+# https://github.com/openlink/virtuoso-opensource/releases
+# NOTE: virtuoso.py also has two independent bugs patched via sed below:
+# - numberOfBuffers/maxDirtyBuffers are computed but never cast to int,
+#   so it always writes fractional buffer counts into virtuoso.ini
+#   (e.g. "NumberOfBuffers = 2451240.975"). Reported upstream in
+#   https://github.com/dki-lab/Freebase-Setup/issues/13 with the same
+#   "VDBMS server process terminated prematurely" crash.
+# - O_DIRECT is hardcoded to 1 with no way to disable it via flags.
+#   O_DIRECT is frequently unsupported on NFS/network-backed mounts
+#   (which Freebase-Setup/ sits on here via /extern/data) and is a
+#   common cause of exactly this crash; buffered I/O (0) is also
+#   generally the faster default per Virtuoso's own tuning guidance.
 VIRTUOSO_VERSION ?= 7.2.17
 VIRTUOSO_URL     ?= https://github.com/openlink/virtuoso-opensource/releases/download/v$(VIRTUOSO_VERSION)/virtuoso-opensource.x86_64-generic_glibc25-linux-gnu.tar.gz
 VIRTUOSO_TARBALL := $(FREEBASE_DIR)/virtuoso-$(VIRTUOSO_VERSION).tar.gz
@@ -729,6 +757,9 @@ freebase-install:
 	fi
 
 	@sed -i 's|^virtuosoPath = .*|virtuosoPath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "virtuoso-opensource")|' "$(FREEBASE_DIR)/virtuoso.py"
+	@sed -i 's|numberOfBuffers = memFree \* 0.15 / 8|numberOfBuffers = int(memFree * 0.15 / 8)|' "$(FREEBASE_DIR)/virtuoso.py"
+	@sed -i 's|maxDirtyBuffers = numberOfBuffers / 2|maxDirtyBuffers = int(numberOfBuffers / 2)|' "$(FREEBASE_DIR)/virtuoso.py"
+	@sed -i 's|O_DIRECT = 1 ; increased from 0|O_DIRECT = 0|' "$(FREEBASE_DIR)/virtuoso.py"
 
 freebase-start:
 	cd "$(FREEBASE_DIR)" && $(PYTHON) virtuoso.py start $(VIRTUOSO_PORT) -d virtuoso_db
