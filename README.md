@@ -15,3 +15,9 @@ cd Bachelorarbeit
 ```
 
 For ease of use, a docker image is provided. The commands to both build and run this can be found at the bottom of the `Dockerfile`. You should first take a look at `SETUP.md`. All direct information of what you need to do to use this project can be found in there.
+
+
+## AI-Assisted Development
+
+AI tools were used for selected non-central development tasks.
+For details, see the [AI Usage Statement](AI_USAGE.md).

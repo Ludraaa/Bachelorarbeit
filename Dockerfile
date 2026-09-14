@@ -125,13 +125,6 @@ RUN python3.11 -c "import nltk; nltk.download('punkt_tab')"
 # ============================================================
 # LLaMA Factory
 # ============================================================
-#
-# Install a specific upstream commit instead of vendoring
-# LLaMA Factory into the thesis repository.
-#
-# Commit:
-# 436d26bc28b7c6422c89b63064c5a87e258ed73e
-#
 
 ARG LLAMA_FACTORY_COMMIT=436d26bc28b7c6422c89b63064c5a87e258ed73e
 
@@ -166,8 +159,7 @@ CMD ["/bin/bash", "--rcfile", "bashrc"]
 # Run
 # ============================================================
 
-# no initial data
 # wharfer run -it -v $(pwd)/Data:/extern/data --name luis-drayer-thesis luis-drayer-thesis
 
-# full initial data (requires uni pc)
+# full initial data (requires uni-freiburg PC for NFS access)
 # wharfer run -it -v /nfs/students/luis-drayer:/extern/data --name luis-drayer-thesis luis-drayer-thesis
