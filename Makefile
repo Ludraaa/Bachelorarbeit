@@ -1,4 +1,3 @@
-```make
 # ============================================================
 # Configuration
 # ============================================================
@@ -196,4 +195,3 @@ demo_qald7_no_train: download-qald7
 demo_qald7_no_train_no_generate:
 	$(PYTHON) src/resolve_predictions.py --run_config $(QALD7_DEMO_CONFIG)
 	$(PYTHON) src/eval_predictions.py --run_config $(QALD7_DEMO_CONFIG)
-```
