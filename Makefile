@@ -227,7 +227,7 @@ help-freebase-install:
 	@echo "freebase-install"
 	@echo "============================================================"
 	@echo "Description:"
-	@echo "  Download and build the Freebase Virtuoso setup. This mirrors the setup used by ChatKBQA."
+	@echo "  Download the Freebase Virtuoso setup and a prebuilt Virtuoso binary. This mirrors the setup used by ChatKBQA."
 	@echo
 	@echo "Reads:"
 	@echo "  Freebase-Setup/ (if already present)"
@@ -694,9 +694,8 @@ FREEBASE_DIR     ?= Freebase-Setup
 VIRTUOSO_PORT    ?= 3001
 VIRTUOSO_DB_URL  ?= https://www.dropbox.com/s/q38g0fwx1a3lz8q/virtuoso_db.zip?dl=1
 
-# Virtuoso Open Source Edition
-VIRTUOSO_VERSION ?= 7.2.12
-VIRTUOSO_URL     ?= https://github.com/openlink/virtuoso-opensource/archive/refs/tags/v$(VIRTUOSO_VERSION).tar.gz
+VIRTUOSO_VERSION ?= 7.2.17
+VIRTUOSO_URL     ?= https://github.com/openlink/virtuoso-opensource/releases/download/v$(VIRTUOSO_VERSION)/virtuoso-opensource.x86_64-generic_glibc25-linux-gnu.tar.gz
 VIRTUOSO_TARBALL := $(FREEBASE_DIR)/virtuoso-$(VIRTUOSO_VERSION).tar.gz
 VIRTUOSO_DIR     := $(FREEBASE_DIR)/virtuoso-opensource
 
@@ -715,18 +714,18 @@ freebase-install:
 		rm "$(FREEBASE_DIR)/virtuoso_db.zip"; \
 	fi
 
-	@if [ -d "$(VIRTUOSO_DIR)" ]; then \
-		echo "Virtuoso $(VIRTUOSO_VERSION) already downloaded, skipping"; \
+	@if [ -x "$(VIRTUOSO_DIR)/bin/virtuoso-t" ]; then \
+		echo "Virtuoso $(VIRTUOSO_VERSION) already installed, skipping"; \
 	else \
 		curl -fL "$(VIRTUOSO_URL)" -o "$(VIRTUOSO_TARBALL)"; \
-		tar -xzf "$(VIRTUOSO_TARBALL)" -C "$(FREEBASE_DIR)"; \
-		mv "$(FREEBASE_DIR)/virtuoso-opensource-$(VIRTUOSO_VERSION)" "$(VIRTUOSO_DIR)"; \
+		rm -rf "$(VIRTUOSO_DIR).tmp" && mkdir -p "$(VIRTUOSO_DIR).tmp"; \
+		tar -xzf "$(VIRTUOSO_TARBALL)" -C "$(VIRTUOSO_DIR).tmp"; \
 		rm "$(VIRTUOSO_TARBALL)"; \
-	fi
-
-	@if [ ! -x "$(VIRTUOSO_DIR)/binsrc/virtuoso/virtuoso-t" ]; then \
-		echo "Building Virtuoso $(VIRTUOSO_VERSION)..."; \
-		cd "$(VIRTUOSO_DIR)" && ./autogen.sh && ./configure && make -j$$(nproc); \
+		EXTRACTED=$$(find "$(VIRTUOSO_DIR).tmp" -mindepth 1 -maxdepth 1 -type d | head -n1); \
+		rm -rf "$(VIRTUOSO_DIR)"; \
+		mv "$$EXTRACTED" "$(VIRTUOSO_DIR)"; \
+		rmdir "$(VIRTUOSO_DIR).tmp" 2>/dev/null || true; \
+		chmod +x "$(VIRTUOSO_DIR)/bin/virtuoso-t"; \
 	fi
 
 	@sed -i 's|^virtuosoPath = .*|virtuosoPath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "virtuoso-opensource")|' "$(FREEBASE_DIR)/virtuoso.py"
