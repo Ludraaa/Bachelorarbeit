@@ -34,6 +34,7 @@ RUN apt-get update && \
         gawk \
         gperf \
         pkg-config \
+        tmux\
     && rm -rf /var/lib/apt/lists/*
 
 
@@ -161,5 +162,9 @@ CMD ["/bin/bash", "--rcfile", "bashrc"]
 
 # wharfer run -it -v $(pwd)/Data:/extern/data --name luis-drayer-thesis luis-drayer-thesis
 
+# wharfer run -d -v $(pwd)/Data:/extern/data --name luis-drayer-thesis luis-drayer-thesis tail -f /dev/null
+# wharfer exec -it luis-drayer-thesis bash
+
+
 # full initial data (requires uni-freiburg PC for NFS access)
-# wharfer run -it -v /nfs/students/luis-drayer:/extern/data --name luis-drayer-thesis luis-drayer-thesis
+# wharfer run -it -v /nfs/students/luis-drayer/thesis/data_dirty:/extern/data --name luis-drayer-thesis luis-drayer-thesis

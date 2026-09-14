@@ -138,9 +138,9 @@ def remove_comments(s: str) -> str:
 
 def _mask_literals(s: str) -> str:
     """
-    Return a same-length copy with the contents of string literals
+    Return a copy with the contents of string literals
     and IRIs blanked out to spaces, so bracket/paren/keyword
-    scanning elsewhere isn't confused by punctuation inside.
+    scanning elsewhere does not get confused by punctuation inside.
     """
     out = []
     in_string = False
@@ -303,8 +303,7 @@ def _add_missing_group_by(sparql: str) -> str:
         out.append(sparql[i:m.end()])
         sel_start = m.end()
 
-        # Advance to the "{" that opens this SELECT's WHERE block, i.e.
-        # the first unparenthesized "{" after the select list.
+        # Advance to the "{" that opens this SELECT's WHERE block
         depth_paren = 0
         j = sel_start
         brace_pos = None
@@ -389,10 +388,7 @@ def fix_sparql_for_jena(sparql: str, COMMON_PREFIXES) -> str:
 
     sparql = remove_comments(sparql)
 
-    # collapse whitespace -- but never inside string literals or IRIs,
-    # since some gold literals have meaningful internal whitespace (e.g.
-    # a stored KB literal with a double space) that a naive global collapse
-    # would silently alter, changing what the query actually matches.
+    # collapse whitespace 
     sparql = _collapse_whitespace_outside_literals(sparql)
 
     # fix common SPARQL quirks

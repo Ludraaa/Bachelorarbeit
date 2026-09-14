@@ -130,11 +130,7 @@ def bindings_to_rows(results) -> list[list[str]]:
 
 def ensure_rows(answer) -> list[list[str]]:
     """
-    Coerce an answer field to list[list[str]] regardless of how it was stored.
-
-    Handles both the current list-of-rows format and the legacy flat-string
-    format produced by older versions of adapt_dataset.py:
-        ["m.0135nr", "m.013cqs"]  →  [["m.0135nr"], ["m.013cqs"]]
+    Force an answer field to list[list[str]] regardless of how it was stored.
     """
     if not isinstance(answer, list) or not answer:
         return []
