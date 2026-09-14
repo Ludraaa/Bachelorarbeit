@@ -20,9 +20,21 @@ While any knowledge base works in theory (even WDQS, for example), it is pretty 
 
 ### Freebase
 
-While any local variant works, to stay as comparable to the original ChatKBQA as possible, we use the same virtuoso setup they used. For ease of use, the MAKEFILE entries `freebase-install`, `freebase-start` and `freebase-stop` are provided. Important: The installation size is around 50GB. Make sure to have enough space on the mounted volume. Running this locally also has some rather high memory requirements (ChatKBQA recommend 100GB), especially next to loading the FACC1 index for the entity linker.
+While any local variant works, to stay as comparable to the original ChatKBQA as possible, we use the same virtuoso setup they used. More information on that setup can be found here: https://github.com/dki-lab/Freebase-Setup/blob/master/README.md
 
-Additionally, the FACC1 index has to be downloaded. Use the MAKEFILE entry `download-facc1`.
+Additionally, the FACC1 index has to be downloaded. Below are the steps as described in ChatKBQA:
+
+- Download the mention information (including processed [FACC1](https://github.com/HXX97/GMT-KBQA/blob/main/data/common_data/facc1/README.md) mentions and all entity alias in Freebase) from [OneDrive](https://1drv.ms/u/s!AuJiG47gLqTznjl7VbnOESK6qPW2?e=HDy2Ye) or [Baidu Netdisk](https://pan.baidu.com/s/1qbKP2DV1lo9jlYoBxpyTHA?pwd=qzb7) to `data/common_data/facc1/`.
+
+```
+Data/ (external mount)
+└── data/
+    ├── common_data/                  
+        ├── facc1/   
+            ├── entity_list_file_freebase_complete_all_mention
+            └── surface_map_file_freebase_complete_all_mention                                           
+```
+
 
 ### Wikidata
 

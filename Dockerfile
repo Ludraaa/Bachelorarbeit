@@ -119,6 +119,8 @@ RUN python3.11 -m venv /opt/venv && \
 
 ENV PATH="/opt/venv/bin:${PATH}"
 
+RUN python3.11 -c "import nltk; nltk.download('punkt_tab')"
+
 
 # ============================================================
 # LLaMA Factory
