@@ -1,0 +1,2 @@
+infer_dtype: bfloat16
+trust_remote_code: true
