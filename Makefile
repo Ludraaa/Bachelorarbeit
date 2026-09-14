@@ -58,9 +58,10 @@ help:
 	@echo "  eval                  Step 7: Evaluate prediction quality"
 	@echo
 	@echo "Demos:"
-	@echo "  demo_qald7_full                 Run complete QALD-7 demo"
-	@echo "  demo_qald7_no_train             Run QALD-7 demo without training."
-	@echo "  demo_qald7_no_train_no_generate Run QALD-7 demo without training/generation"
+	@echo "  demo_qald7_full                   Run complete QALD-7 demo"
+	@echo "  demo_qald7_no_train               Run QALD-7 demo without training."
+	@echo "  demo_qald7_no_train_no_generate   Run QALD-7 demo without training/generation"
+	@echo
 	@echo "  Note: The full demo requires Qwen2.5-7b to be downloaded to the base model folder. See SETUP.md for more details."
 	@echo "  Similarly, the no_train and no_train_no_generate variants can only be run from an uni-freiburg computer, as they require existing data."
 	@echo

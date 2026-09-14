@@ -283,18 +283,18 @@
   },
   {
     "timestamp": "2026-09-03T19:45:20.676884+00:00",
-    "resolved_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/Qald7/predictions/Qwen25-7b_Qald7-grisp/grisp/resolved/Qald7_test.sparql.json",
-    "evaluated_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/Qald7/predictions/Qwen25-7b_Qald7-grisp/grisp/evaluated/Qald7_test.sparql.json",
+    "resolved_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/Qald7/predictions/Qwen25-7b_Qald7-sparql/sparql/resolved/Qald7_test.sparql.json",
+    "evaluated_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/Qald7/predictions/Qwen25-7b_Qald7-sparql/sparql/evaluated/Qald7_test.sparql.json",
     "eval_endpoint": "http://amur:7001/sparql",
     "gold_answer_source": "live",
     "resolve_note": "official run",
     "eval_note": "official run",
     "dataset": "Qald7",
     "split": "test",
-    "model_id": "Qwen25-7b_Qald7-grisp",
+    "model_id": "Qwen25-7b_Qald7-sparql",
     "kb": "wikidata",
     "mode": "sparql",
-    "run_name": "grisp",
+    "run_name": "sparql",
     "linker_combo_id": "ChatKBQA.type_map+Wikidata.wbsearchentities_sim+Wikidata.label_search+Wikidata.neighborhood",
     "entity_linker": [
       "ChatKBQA.type_map",
@@ -370,18 +370,18 @@
   },
   {
     "timestamp": "2026-09-03T23:31:01.065915+00:00",
-    "resolved_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/WWQ/predictions/Qwen25-7b_WWQ-grisp/grisp/resolved/WWQ_test.sparql.json",
-    "evaluated_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/WWQ/predictions/Qwen25-7b_WWQ-grisp/grisp/evaluated/WWQ_test.sparql.json",
+    "resolved_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/WWQ/predictions/Qwen25-7b_WWQ-sparql/sparql/resolved/WWQ_test.sparql.json",
+    "evaluated_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/WWQ/predictions/Qwen25-7b_WWQ-sparql/sparql/evaluated/WWQ_test.sparql.json",
     "eval_endpoint": "http://amur:7001/sparql",
     "gold_answer_source": "live",
     "resolve_note": "official run",
     "eval_note": "official run",
     "dataset": "WWQ",
     "split": "test",
-    "model_id": "Qwen25-7b_WWQ-grisp",
+    "model_id": "Qwen25-7b_WWQ-sparql",
     "kb": "wikidata",
     "mode": "sparql",
-    "run_name": "grisp",
+    "run_name": "sparql",
     "linker_combo_id": "ChatKBQA.type_map+Wikidata.wbsearchentities_sim+Wikidata.label_search+Wikidata.neighborhood",
     "entity_linker": [
       "ChatKBQA.type_map",
@@ -457,18 +457,18 @@
   },
   {
     "timestamp": "2026-09-04T11:12:25.716150+00:00",
-    "resolved_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/Qald10/predictions/Qwen25-7b_Qald10-grisp/grisp/resolved/Qald10_test.sparql.json",
-    "evaluated_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/Qald10/predictions/Qwen25-7b_Qald10-grisp/grisp/evaluated/Qald10_test.sparql.json",
+    "resolved_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/Qald10/predictions/Qwen25-7b_Qald10-sparql/sparql/resolved/Qald10_test.sparql.json",
+    "evaluated_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/Qald10/predictions/Qwen25-7b_Qald10-sparql/sparql/evaluated/Qald10_test.sparql.json",
     "eval_endpoint": "http://amur:7001/sparql",
     "gold_answer_source": "live",
     "resolve_note": "official run",
     "eval_note": "official run",
     "dataset": "Qald10",
     "split": "test",
-    "model_id": "Qwen25-7b_Qald10-grisp",
+    "model_id": "Qwen25-7b_Qald10-sparql",
     "kb": "wikidata",
     "mode": "sparql",
-    "run_name": "grisp",
+    "run_name": "sparql",
     "linker_combo_id": "ChatKBQA.type_map+Wikidata.wbsearchentities_sim+Wikidata.label_search+Wikidata.neighborhood",
     "entity_linker": [
       "ChatKBQA.type_map",
@@ -706,93 +706,6 @@
     "exact_match": 0.8045,
     "assignment_f1": 0.8383,
     "hit1": 0.875
-  },
-  {
-    "timestamp": "2026-09-09T19:53:13.489276+00:00",
-    "resolved_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/Spinach/predictions/Qwen25-7b_WDQL-grisp/grisp/resolved/Spinach_test.sparql.json",
-    "evaluated_file": "/work/dlclarge2/drayerl-Bachelorarbeit_SS/Bachelorarbeit/ChatKBQA/data/Spinach/predictions/Qwen25-7b_WDQL-grisp/grisp/evaluated/Spinach_test.sparql.json",
-    "eval_endpoint": "http://amur:7001/sparql",
-    "gold_answer_source": "live",
-    "resolve_note": "official run",
-    "eval_note": "official run",
-    "dataset": "Spinach",
-    "split": "test",
-    "model_id": "Qwen25-7b_WDQL-grisp",
-    "kb": "wikidata",
-    "mode": "sparql",
-    "run_name": "grisp",
-    "linker_combo_id": "ChatKBQA.type_map+Wikidata.wbsearchentities_sim+Wikidata.label_search+Wikidata.neighborhood",
-    "entity_linker": [
-      "ChatKBQA.type_map",
-      "Wikidata.wbsearchentities_sim"
-    ],
-    "entity_linker_params": {
-      "ChatKBQA.type_map": {},
-      "Wikidata.wbsearchentities_sim": {
-        "ke": 50,
-        "te": 0.01,
-        "search_limit": 50,
-        "semantic_weight": 0.55,
-        "lexical_weight": 0.3,
-        "rank_weight": 0.15,
-        "model_name": "princeton-nlp/sup-simcse-roberta-base"
-      }
-    },
-    "predicate_linkers": [
-      "Wikidata.label_search",
-      "Wikidata.neighborhood"
-    ],
-    "predicate_linker_params": {
-      "Wikidata.label_search": {
-        "k": 5
-      },
-      "Wikidata.neighborhood": {
-        "ke": 15,
-        "te": 0.01,
-        "limit": 10000,
-        "timeout": 300,
-        "language": "en",
-        "model_name": "princeton-nlp/unsup-simcse-roberta-large"
-      }
-    },
-    "beam_limits": [
-      15,
-      15
-    ],
-    "k1_per_pass": [
-      100,
-      5
-    ],
-    "t1_per_pass": [
-      0.0,
-      0.0
-    ],
-    "k2_per_pass": [
-      5,
-      15
-    ],
-    "t2_per_pass": [
-      0.0,
-      0.0
-    ],
-    "pass_counts": {
-      "Wikidata.label_search": 24,
-      "Wikidata.neighborhood": 1
-    },
-    "resolve_endpoint": "http://amur:7001/sparql",
-    "resolve_timestamp": "2026-09-09T19:47:18.435364+00:00",
-    "num_items": 165,
-    "num_stale": 41,
-    "stale_pct": 24.85,
-    "num_scored": 124,
-    "num_executable": 25,
-    "executable_pct": 15.15,
-    "num_exec_error": 0,
-    "num_empty_pred": 0,
-    "num_with_gold": 124,
-    "exact_match": 0.0081,
-    "assignment_f1": 0.06,
-    "hit1": 0.129
   },
   {
     "timestamp": "2026-09-10T00:22:50.342568+00:00",
