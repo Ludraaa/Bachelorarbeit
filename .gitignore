@@ -205,3 +205,6 @@ data2/
 data3/
 data_alt/
 env_cluster.sh
+configs/
+results/
+Freebase-Setup/
