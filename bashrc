@@ -23,10 +23,6 @@ link_external "Models"         "/workspace/LLMs/Models"
 link_external "MyModels"       "/workspace/LLMs/MyModels"
 link_external "Results"        "/workspace/results"
 link_external "Freebase-Setup" "/workspace/Freebase-Setup"
-
-if [ -d /extern/data/Configs ]; then
-    cp -rn /opt/repo-configs/. /extern/data/Configs/
-fi
 link_external "Configs" "/workspace/configs"
 
 source /workspace/env.sh

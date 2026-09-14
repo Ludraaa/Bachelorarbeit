@@ -70,12 +70,7 @@ COPY bashrc bashrc
 COPY env.sh env.sh
 COPY SETUP.md SETUP.md
 COPY README.md README.md
-COPY configs/ configs/
 
-# Untouched reference copy of the repo's default configs. Used at
-# container start to seed any config files missing from a mounted
-# Configs/ dir, without ever overwriting user-created/edited ones.
-COPY configs/ /opt/repo-configs/
 
 COPY src/ /workspace/src
 
@@ -99,7 +94,7 @@ RUN mkdir -p \
     /workspace/results \
     /workspace/Freebase-Setup && \
     echo '{}' > /workspace/LLMs/data/dataset_info.json && \
-    chown -R appuser:appuser /workspace /opt/repo-configs
+    chown -R appuser:appuser /workspace
 
 
 # ============================================================
