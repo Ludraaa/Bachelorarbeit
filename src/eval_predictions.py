@@ -15,6 +15,7 @@ from tqdm import tqdm
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 
 from src.utils.sparql_exec import (
     init_uri_normaliser,
@@ -542,16 +543,106 @@ def build_hyperparam_analysis(evaluated_items: list[dict], file_meta: dict, n_to
 # --------------------------------------------
 # plots
 
+def _display_label(lid: str) -> str:
+    if lid == "_stale":
+        return "Stale"
+    if lid == "_unresolved":
+        return "Unresolved"
+    return lid
+
+
+_BUDGET_DISPLAY = {
+    "0.01pct": "0.01%",
+    "0.1pct":  "0.1%",
+    "1pct":    "1%",
+}
+
+
 def _hist_ax(ax, values: list[int], title: str, xlabel: str):
     if not values:
         ax.set_title(f"{title} (no data)")
+        ax.axis("off")
         return
-    max_v = max(values)
-    bins = min(max_v + 2, 40)
+
+    min_v, max_v = min(values), max(values)
+
+    if min_v == max_v:
+        # Every item landed on the same index
+        ax.bar([min_v], [len(values)], width=0.6, color="#4C72B0", edgecolor="white")
+        ax.set_xlim(min_v - 1, min_v + 1)
+        ax.set_xticks([min_v])
+        ax.set_title(f"{title} (constant = {min_v})")
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel("# items")
+        return
+
+    span = max_v - min_v
+    max_bins = 40
+    if span + 1 <= max_bins:
+        # One bin per integer value, edges centred on each index
+        bins = np.arange(min_v - 0.5, max_v + 1.5, 1)
+    else:
+        bins = max_bins
+
     ax.hist(values, bins=bins, color="#4C72B0", edgecolor="white", linewidth=0.5)
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.set_title(title)
     ax.set_xlabel(xlabel)
     ax.set_ylabel("# items")
+
+
+def _plot_sensitivity_param(ax, curve: dict, sens: dict, pname: str) -> None:
+    """
+    Draw one panel of the beam/k1/k2 sensitivity plot: the cumulative F1-loss
+    curve as the cap is trimmed down, with the caps picked out by each F1
+    budget marked on top.
+    """
+    caps = curve.get("caps") or []
+    losses = curve.get("cum_loss_pct") or []
+
+    if not caps:
+        ax.set_title(f"{pname} (no data)")
+        ax.axis("off")
+        return
+
+    if len(caps) == 1:
+        # cap already at minimum for every item in this pass --
+        # Show a single flat marker instead
+        cap = caps[0]
+        ax.axhline(0.0, color="#4C72B0", linewidth=1.0, alpha=0.5)
+        ax.scatter([cap], [0.0], color="#4C72B0", zorder=5, s=30)
+        ax.set_xlim(cap - 1, cap + 1)
+        ax.set_xticks([cap])
+        ax.set_ylim(-0.5, 1.0)
+        ax.set_xlabel(pname)
+        ax.set_ylabel("cumulative F1 loss (%)")
+        ax.set_title(f"{pname} (already at minimum)")
+        return
+
+    ax.plot(caps, losses, color="#4C72B0", linewidth=1.2)
+
+    # Several budgets can resolve to the same cap (e.g. once the curve is
+    # essentially flat at the low end) -- group those so their annotations
+    # don't get drawn stacked on top of each other.
+    grouped_points: dict[tuple, list[str]] = defaultdict(list)
+    for budget_name in ("0.01pct", "0.1pct", "1pct"):
+        if budget_name not in sens:
+            continue
+        cap = sens[budget_name]["new_cap"]
+        loss_pct = round(sens[budget_name]["f1_loss"] * 100, 6)
+        grouped_points[(cap, loss_pct)].append(budget_name)
+
+    for (cap, loss_pct), budget_names in grouped_points.items():
+        ax.scatter([cap], [loss_pct], color="#DD8452", zorder=5, s=25)
+        label_text = "/".join(_BUDGET_DISPLAY[b] for b in budget_names)
+        ax.annotate(label_text, (cap, loss_pct), textcoords="offset points",
+                    xytext=(4, 4), fontsize=7)
+
+    ax.set_xlabel(pname)
+    ax.set_ylabel("cumulative F1 loss (%)")
+    ax.set_title(pname)
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax.invert_xaxis()
 
 
 def generate_plots(evaluated_items: list[dict], file_meta: dict, distributions: dict,
@@ -562,8 +653,10 @@ def generate_plots(evaluated_items: list[dict], file_meta: dict, distributions: 
 
     # 1. Winning-pass distribution
     fig, ax = plt.subplots(figsize=(5, 3.5))
-    labels = list(distributions["winning_pass"].keys())
-    counts = [distributions["winning_pass"][l]["count"] for l in labels]
+    ordered_ids = list(predicate_linkers) + ["_unresolved", "_stale"]
+    labels = [lid for lid in ordered_ids if lid in distributions["winning_pass"]]
+    counts = [distributions["winning_pass"][lid]["count"] for lid in labels]
+    display_labels = [_display_label(lid) for lid in labels]
 
     def _bucket_color(l):
         if l == "_unresolved":
@@ -573,7 +666,7 @@ def generate_plots(evaluated_items: list[dict], file_meta: dict, distributions: 
         return "#4C72B0"
 
     colors = [_bucket_color(l) for l in labels]
-    ax.bar(labels, counts, color=colors)
+    ax.bar(display_labels, counts, color=colors)
     for i, c in enumerate(counts):
         ax.text(i, c, str(c), ha="center", va="bottom", fontsize=9)
     ax.set_ylabel("# items")
@@ -585,7 +678,7 @@ def generate_plots(evaluated_items: list[dict], file_meta: dict, distributions: 
     plt.close(fig)
     saved.append(path)
 
-    # 2. Per-pass histograms: beam rank / entity perm idx / predicate perm idx
+    # 2. Per-pass histograms: beam rank / entity permutation index / predicate permutation index
     for lid in predicate_linkers:
         items_for_pass = [
             it for it in evaluated_items
@@ -597,9 +690,9 @@ def generate_plots(evaluated_items: list[dict], file_meta: dict, distributions: 
         _hist_ax(axes[0], [it["executed_beam_rank"] for it in items_for_pass if it.get("executed_beam_rank") is not None],
                  "Winning beam rank", "beam rank")
         _hist_ax(axes[1], [it["winning_entity_perm_idx"] for it in items_for_pass if it.get("winning_entity_perm_idx") is not None],
-                 "Winning entity permutation idx", "entity perm idx")
+                 "Winning entity permutation index", "entity permutation index")
         _hist_ax(axes[2], [it["winning_predicate_perm_idx"] for it in items_for_pass if it.get("winning_predicate_perm_idx") is not None],
-                 "Winning predicate permutation idx", "predicate perm idx")
+                 "Winning predicate permutation index", "predicate permutation index")
         fig.suptitle(f"Pass '{lid}' (n={len(items_for_pass)})")
         path = plots_dir / f"winning_index_distributions_{lid.replace('.', '_')}.pdf"
         fig.savefig(path)
@@ -611,32 +704,14 @@ def generate_plots(evaluated_items: list[dict], file_meta: dict, distributions: 
     for lid, data in hyperparam.items():
         fig, axes = plt.subplots(1, 3, figsize=(13, 3.8))
         param_specs = [
-            ("beam_limit_sensitivity", "beam_limit_curve", axes[0], "beam_limit"),
+            ("beam_limit_sensitivity", "beam_limit_curve", axes[0], "Beams"),
             ("k1_sensitivity", "k1_curve", axes[1], "k1"),
             ("k2_sensitivity", "k2_curve", axes[2], "k2"),
         ]
-        budget_order = ["0.01pct", "0.1pct", "1pct"]
         for sens_key, curve_key, ax, pname in param_specs:
             curve = data.get(curve_key) or {}
             sens = data.get(sens_key) or {}
-            if not curve.get("caps"):
-                ax.set_title(f"{pname} (no data)")
-                continue
-
-            ax.plot(curve["caps"], curve["cum_loss_pct"], color="#4C72B0", linewidth=1.2)
-
-            for b in budget_order:
-                if b not in sens:
-                    continue
-                cap = sens[b]["new_cap"]
-                loss_pct = sens[b]["f1_loss"] * 100
-                ax.scatter([cap], [loss_pct], color="#DD8452", zorder=5, s=25)
-                ax.annotate(b, (cap, loss_pct), textcoords="offset points", xytext=(4, 4), fontsize=7)
-
-            ax.set_xlabel(f"{pname} cap")
-            ax.set_ylabel("cumulative F1 loss (%)")
-            ax.set_title(pname)
-            ax.invert_xaxis()
+            _plot_sensitivity_param(ax, curve, sens, pname)
         fig.suptitle(f"F1 cost of trimming search caps — pass '{lid}' (min cap = {_MIN_CAP})")
         path = plots_dir / f"sensitivity_{lid.replace('.', '_')}.pdf"
         fig.savefig(path)
@@ -653,7 +728,7 @@ def generate_plots(evaluated_items: list[dict], file_meta: dict, distributions: 
         x = np.arange(len(passes))
         for i, b in enumerate(budget_order):
             vals = [hyperparam[p]["combined_estimate"].get(b, {}).get("estimated_time_saved_pct", 0.0) for p in passes]
-            ax.bar(x + i * width, vals, width, label=b)
+            ax.bar(x + i * width, vals, width, label=_BUDGET_DISPLAY[b])
         ax.set_xticks(x + width, passes, rotation=15, ha="right")
         ax.set_ylabel("estimated time saved (%)")
         ax.set_title("Estimated per-pass runtime savings vs. F1 budget")
@@ -685,6 +760,7 @@ def generate_per_linker_plots(evaluated_items: list[dict], predicate_linkers: li
 
     colors = ["#DD8452" if l == "_unresolved" else "#4C72B0" for l in quality_labels]
     x = np.arange(len(quality_labels))
+    display_labels = [_display_label(l) for l in quality_labels]
 
     # 1. Answer quality per pass
     fig, ax = plt.subplots(figsize=(6.5, 3.8))
@@ -692,11 +768,11 @@ def generate_per_linker_plots(evaluated_items: list[dict], predicate_linkers: li
     em = [per_linker_performance[l]["exact_match_rate"] for l in quality_labels]
     f1 = [per_linker_performance[l]["assignment_f1"]["mean"] for l in quality_labels]
     h1 = [per_linker_performance[l]["hit1_rate"] for l in quality_labels]
-    ax.bar(x - width, em, width, label="exact match", color="#4C72B0")
-    ax.bar(x, f1, width, label="assignment F1 (mean)", color="#DD8452")
-    ax.bar(x + width, h1, width, label="hit@1", color="#55A868")
+    ax.bar(x - width, em, width, label="Exact match", color="#4C72B0")
+    ax.bar(x, f1, width, label="Assignment F1", color="#DD8452")
+    ax.bar(x + width, h1, width, label="Hit@1", color="#55A868")
     ax.set_xticks(x)
-    ax.set_xticklabels(quality_labels, rotation=20, ha="right")
+    ax.set_xticklabels(display_labels, rotation=20, ha="right")
     ax.set_ylabel("score")
     ax.set_ylim(0, 1)
     ax.set_title("Answer quality by winning pass")
@@ -723,7 +799,7 @@ def generate_per_linker_plots(evaluated_items: list[dict], predicate_linkers: li
     ax.bar(x - width / 2, item_share_pct, width, label="share of scored items", color="#4C72B0")
     ax.bar(x + width / 2, f1_share_pct, width, label="share of total assignment F1", color="#55A868")
     ax.set_xticks(x)
-    ax.set_xticklabels(quality_labels, rotation=20, ha="right")
+    ax.set_xticklabels(display_labels, rotation=20, ha="right")
     ax.set_ylabel("% share")
     ax.set_title("Item share vs. F1 contribution share by pass")
     ax.legend()

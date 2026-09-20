@@ -10,8 +10,8 @@ from src.utils.retry import call_with_retry
 class Linker(BaseEntityLinker):
     """
     Wikidata entity linker: candidate generation via the public
-    wbsearchentities API, reranked with a SimCSE cross-encoder-style
-    lexical+semantic hybrid score.
+    wbsearchentities API, reranked with a SimCSE semantic+lexical
+    hybrid score.
     """
 
     def __init__(

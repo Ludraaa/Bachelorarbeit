@@ -2,7 +2,6 @@ Note: If you are running the container with the existing NFS data (accessible on
 ```
 cd Freebase-Setup/
 python3 virtuoso.py start 3001 -d virtuoso_db
-cd ..
 ```
 
 
