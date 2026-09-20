@@ -1,0 +1,2 @@
+# This is not actually a trained model, but rather the adapted original predictions.
+output_dir: LLMs/MyModels/ChatKBQA/

@@ -23,6 +23,7 @@ resolve:
   linker_params: {}
   label_fallback: true
   debug: true
+  item_time_limit_sec: 1200
 
 eval:
   get_live_gold: true

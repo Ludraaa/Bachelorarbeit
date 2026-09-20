@@ -5,7 +5,7 @@ kb: freebase
 endpoint_url: "http://localhost:3001/sparql"
 note: "official run"
 
-entity_linkers: "ChatKBQA.type_map,ChatKBQA.facc1"
+entity_linkers: "ChatKBQA.type_map,ChatKBQA.gold_exact,ChatKBQA.gold_simcse,ChatKBQA.facc1"
 predicate_linkers: "ChatKBQA.simple,ChatKBQA.neighborhood"
 
 dataset_config: configs/datasets/WebQSP.yaml
@@ -21,10 +21,8 @@ resolve:
   k2_per_pass: "1,4000"
   beam_limits: "15"
   linker_params: {}
-  label_fallback: false
+  label_fallback: true
   debug: true
-  item_time_limit_sec: 1200
-
 
 eval:
   get_live_gold: true

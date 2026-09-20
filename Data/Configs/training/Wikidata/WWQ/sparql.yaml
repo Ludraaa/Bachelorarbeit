@@ -13,7 +13,7 @@ lora_alpha: 32
 lora_dropout: 0.05
 
 ### Dataset
-dataset: Qald10_train.sparql
+dataset: WWQ_train.sparql
 dataset_dir: LLMs/data
 template: qwen
 overwrite_cache: true
@@ -27,7 +27,7 @@ eval_strategy: steps
 eval_steps: 20
 
 ### Output
-output_dir: LLMs/MyModels/Qwen25-7b_Qald10-grisp/
+output_dir: LLMs/MyModels/Qwen25-7b_WWQ-sparql/
 logging_steps: 5
 save_steps: 20
 plot_loss: true

@@ -1,30 +1,25 @@
 dataset: WebQSP
 split: test
-mode: sparql
+mode: chatkbqa_webqsp
 kb: freebase
 endpoint_url: "http://localhost:3001/sparql"
 note: "official run"
 
-entity_linkers: "ChatKBQA.type_map,ChatKBQA.facc1"
+entity_linkers: "ChatKBQA.type_map,ChatKBQA.gold_exact,ChatKBQA.gold_simcse,ChatKBQA.facc1"
 predicate_linkers: "ChatKBQA.simple,ChatKBQA.neighborhood"
 
 dataset_config: configs/datasets/WebQSP.yaml
-training_config: configs/training/Freebase/WebQSP/Llama-2-7b_sparql.yaml
+training_config: configs/training/Freebase/WebQSP/ChatKBQA_WQSP.yaml
 infer_config: configs/infer/default.yaml
-
-generate:
-  num_beams: 15
-  diversity_penalty: 1.0
 
 resolve:
   k1_per_pass: "500,50"
   k2_per_pass: "1,4000"
   beam_limits: "15"
   linker_params: {}
-  label_fallback: false
   debug: true
   item_time_limit_sec: 1200
 
-
 eval:
   get_live_gold: true
+  live_only: true

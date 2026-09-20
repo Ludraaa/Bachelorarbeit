@@ -27,7 +27,7 @@ eval_strategy: steps
 eval_steps: 20
 
 ### Output
-output_dir: LLMs/MyModels/Qwen25-7b_Lcquad2-grisp/
+output_dir: LLMs/MyModels/Qwen25-7b_Lcquad2-sparql/
 logging_steps: 5
 save_steps: 20
 plot_loss: true

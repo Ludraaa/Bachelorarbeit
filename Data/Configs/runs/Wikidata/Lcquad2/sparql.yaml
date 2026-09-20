@@ -1,4 +1,4 @@
-dataset: Qald7
+dataset: Lcquad2
 split: test
 mode: sparql
 kb: wikidata
@@ -9,7 +9,7 @@ entity_linkers: "ChatKBQA.type_map,Wikidata.wbsearchentities_sim"
 predicate_linkers: "Wikidata.label_search,Wikidata.neighborhood"
 
 dataset_config: configs/datasets/default.yaml
-training_config: configs/training/Wikidata/Qald7/grisp.yaml
+training_config: configs/training/Wikidata/Lcquad2/sparql.yaml
 infer_config: configs/infer/default.yaml
 
 generate:

@@ -13,7 +13,7 @@ lora_alpha: 32
 lora_dropout: 0.05
 
 ### Dataset
-dataset: Qald7_train.sparql
+dataset: CWQ_train.jena
 dataset_dir: LLMs/data
 template: qwen
 overwrite_cache: true
@@ -21,15 +21,15 @@ cutoff_len: 2048
 
 
 ### Eval
-val_size: 0.1
+val_size: 0.05
 per_device_eval_batch_size: 2
 eval_strategy: steps
-eval_steps: 20
+eval_steps: 1000
 
 ### Output
-output_dir: LLMs/MyModels/Qwen25-7b_Qald7-grisp/
+output_dir: LLMs/MyModels/Qwen25-7b_CWQ-jena/
 logging_steps: 5
-save_steps: 20
+save_steps: 1000
 plot_loss: true
 overwrite_output_dir: true
 save_total_limit: 3

@@ -13,7 +13,7 @@ lora_alpha: 32
 lora_dropout: 0.05
 
 ### Dataset
-dataset: WWQ_train.sparql
+dataset: WebQSP_train.sparql
 dataset_dir: LLMs/data
 template: qwen
 overwrite_cache: true
@@ -24,12 +24,12 @@ cutoff_len: 2048
 val_size: 0.1
 per_device_eval_batch_size: 2
 eval_strategy: steps
-eval_steps: 20
+eval_steps: 100
 
 ### Output
-output_dir: LLMs/MyModels/Qwen25-7b_WWQ-grisp/
+output_dir: LLMs/MyModels/Qwen25-7b_WebQSP-sparql/
 logging_steps: 5
-save_steps: 20
+save_steps: 100
 plot_loss: true
 overwrite_output_dir: true
 save_total_limit: 3
