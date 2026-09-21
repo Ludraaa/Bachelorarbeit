@@ -42,11 +42,6 @@ help:
 	@echo "  download-qald10       Download QALD-10"
 	@echo "  download-lcquad2      Download LC-QuAD 2"
 	@echo
-	@echo "Freebase:"
-	@echo "  freebase-install      Install/build the Freebase Virtuoso setup"
-	@echo "  freebase-start        Start the Freebase Virtuoso server"
-	@echo "  freebase-stop         Stop the Freebase Virtuoso server"
-	@echo
 	@echo "Pipeline:"
 	@echo "  pipeline              Run the complete pipeline"
 	@echo "  convert               Step 1: Convert SPARQL to S-expression"
@@ -304,12 +299,11 @@ help-convert:
 	@echo "  Dataset size dependent; from a few minutes for the smaller datasets (like WebQSP) to around 30 minutes for something like LC-QuAD2"
 	@echo
 	@echo "RAM:"
-	@echo "  Approximately <EDIT>"
+	@echo "  Memory usage generally scales with dataset size; 32GB of total system RAM should be sufficient for the provided datasets."
 	@echo
 	@echo "Disk:"
 	@echo "  Dataset dependent, but typically a few hundred MBs."
 	@echo
-
 help-labels:
 	@echo "============================================================"
 	@echo "labels"
@@ -328,7 +322,7 @@ help-labels:
 	@echo "  A few seconds to minutes."
 	@echo
 	@echo "RAM:"
-	@echo "  Approximately <EDIT>"
+	@echo "  Memory usage generally scales with dataset size; 32GB of total system RAM should be sufficient for the provided datasets."
 	@echo
 	@echo "Disk:"
 	@echo "  Dataset dependent, but typically a few hundred MBs."
@@ -351,7 +345,7 @@ help-prepare:
 	@echo "  A few seconds."
 	@echo
 	@echo "RAM:"
-	@echo "  Approximately <EDIT>"
+	@echo "  Memory usage generally scales with dataset size; 32GB of total system RAM should be sufficient for the provided datasets."
 	@echo
 	@echo "Disk:"
 	@echo "  A few MBs."
@@ -375,8 +369,8 @@ help-train:
 	@echo "Runtime:"
 	@echo "  Completely config and hardware dependent; Typically 5-10 hours for medium sized datasets (CWQ, WebQSP)."
 	@echo
-	@echo "RAM:"
-	@echo "  Approximately <EDIT: GB>"
+	@echo "RAM / VRAM:"
+	@echo "  Dependant on the specific configuration used. If memory is tight and the model is not gigantic, reducing batch size in the training config can help. All experiments fit within the VRAM of a single NVIDIA L40S GPU."
 	@echo
 	@echo "Disk:"
 	@echo "  Approximately a few GBs for the produced adapter, but also config dependent."
@@ -400,7 +394,7 @@ help-generate:
 	@echo "  Dataset, config and hardware dependent. Could take up to a few days, but typically around the 5-10 hour mark for medium datasets (WebQSP, CWQ)."
 	@echo
 	@echo "RAM:"
-	@echo "  Approximately <EDIT: GB>"
+	@echo "  Dependant on the model used. All experiments fit within the VRAM of a single NVIDIA L40S GPU."
 	@echo
 	@echo "Disk:"
 	@echo "  Typically a few hundred MBs."
@@ -449,7 +443,7 @@ help-eval:
 	@echo "  A few minutes."
 	@echo
 	@echo "RAM:"
-	@echo "  Approximately <EDIT>"
+	@echo "  Memory usage generally scales with dataset size; 32GB of total system RAM should be sufficient for the provided datasets."
 	@echo
 	@echo "Disk:"
 	@echo "  A few MBs."
@@ -471,16 +465,17 @@ help-demo-qald7-full:
 	@echo "  Processed datasets."
 	@echo "  Fine-tuned model."
 	@echo "  Predictions."
+	@echo "  Resolved Predictions."
 	@echo "  Evaluation results."
 	@echo
 	@echo "Runtime:"
-	@echo "  Approximately <EDIT: hours/days>"
+	@echo "  Should not take longer than 8 hours when using GPU for finetuning and generation."
 	@echo
-	@echo "RAM:"
-	@echo "  Approximately <EDIT: GB>"
+	@echo "RAM / VRAM:"
+	@echo "  Experiment fit within the VRAM of a single NVIDIA L40S GPU, as well as 32GB system RAM."
 	@echo
 	@echo "Disk:"
-	@echo "  Approximately <EDIT: GB>"
+	@echo "  Approximately 4GB between the adapter and script outputs."
 	@echo
 
 help-demo-qald7-no-train:
@@ -501,13 +496,13 @@ help-demo-qald7-no-train:
 	@echo "  Evaluation results."
 	@echo
 	@echo "Runtime:"
-	@echo "  Approximately <EDIT: hours>"
+	@echo "  Should not take longer than 8 hours when using GPU for finetuning and generation."
 	@echo
-	@echo "RAM:"
-	@echo "  Approximately <EDIT: GB>"
+	@echo "RAM / VRAM:"
+	@echo "  Experiment fit within the VRAM of a single NVIDIA L40S GPU, as well as 32GB system RAM."
 	@echo
 	@echo "Disk:"
-	@echo "  Approximately <EDIT: GB>"
+	@echo "  Approximately 200MB of script outputs."
 	@echo
 
 help-demo-qald7-no-train-no-generate:
@@ -526,13 +521,13 @@ help-demo-qald7-no-train-no-generate:
 	@echo "  Evaluation results."
 	@echo
 	@echo "Runtime:"
-	@echo "  Approximately <EDIT>"
+	@echo "  Should not take longer than 2 hours."
 	@echo
 	@echo "RAM:"
-	@echo "  Approximately <EDIT>"
+	@echo "  A few GB at most."
 	@echo
 	@echo "Disk:"
-	@echo "  Approximately <EDIT>"
+	@echo "  Approximately 200MB of script outputs."
 	@echo
 
 # ============================================================
