@@ -649,12 +649,12 @@ eval:
 # Demos (Wikidata / Qald7)
 # ============================================================
 
-.PHONY: demo_qald7_full demo_qald7_no_train demo_qald7_no_train_no_generate
+.PHONY: demo-qald7-full demo-qald7-no-train demo-qald7-no-train-no-generate
 
 QALD7_DEMO_CONFIG := configs/runs/Wikidata/Qald7/sparql.yaml
 QALD7_DEMO_TRAINING_CONFIG := $(shell $(PYTHON) -c "import yaml; print(yaml.safe_load(open('$(QALD7_DEMO_CONFIG)'))['training_config'])")
 
-demo_qald7_full: download-qald7
+demo-qald7-full: download-qald7
 	$(PYTHON) src/sparql_to_sexpr.py --run_config $(QALD7_DEMO_CONFIG)
 	$(PYTHON) src/insert_labels.py --run_config $(QALD7_DEMO_CONFIG)
 	$(PYTHON) src/prepare_llm_data.py --run_config $(QALD7_DEMO_CONFIG)
@@ -663,13 +663,13 @@ demo_qald7_full: download-qald7
 	$(PYTHON) src/resolve_predictions.py --run_config $(QALD7_DEMO_CONFIG)
 	$(PYTHON) src/eval_predictions.py --run_config $(QALD7_DEMO_CONFIG)
 
-demo_qald7_no_train: download-qald7
+demo-qald7-no-train: download-qald7
 	$(PYTHON) src/sparql_to_sexpr.py --run_config $(QALD7_DEMO_CONFIG)
 	$(PYTHON) src/insert_labels.py --run_config $(QALD7_DEMO_CONFIG)
 	$(PYTHON) src/generate_predictions.py --run_config $(QALD7_DEMO_CONFIG)
 	$(PYTHON) src/resolve_predictions.py --run_config $(QALD7_DEMO_CONFIG)
 	$(PYTHON) src/eval_predictions.py --run_config $(QALD7_DEMO_CONFIG)
 
-demo_qald7_no_train_no_generate:
+demo-qald7-no-train-no-generate:
 	$(PYTHON) src/resolve_predictions.py --run_config $(QALD7_DEMO_CONFIG)
 	$(PYTHON) src/eval_predictions.py --run_config $(QALD7_DEMO_CONFIG)
