@@ -6,14 +6,13 @@ from pathlib import Path
 from src.utils.sparql_exec import normalise_gold_sparql
 from src.utils.kb import load_kb_module
 
-
 FB_NS = "http://rdf.freebase.com/ns/"
-
 
 
 def transform_compact_sexpr(sexpr: str) -> str:
     """
-    Adds URLs to the originally isolated entity and predicate ids.
+    Expand regular sexpr representation to include full URIs.
+
     """
     if not sexpr or sexpr == "null":
         return sexpr
@@ -33,33 +32,42 @@ def transform_compact_sexpr(sexpr: str) -> str:
 
 def transform_normed_sexpr(sexpr: str) -> str:
     """
-    Replaces list notation predicates with dot notation (and prefix). Also adds prefix to entities.
+    Expand label-enriched sexpr representation to include prefixes.
     """
     if not sexpr or sexpr == "null":
         return sexpr
 
-    def replace_relation(m: re.Match) -> str:
+    def replace_r_relation(m: re.Match) -> str:
+        """
+        ( R [people , sibling relationship , sibling] ) -> (R fbp:people.sibling_relationship.sibling) 
+        """
         content = m.group(1).replace('，', ',')
         parts = [p.strip().replace(' ', '_') for p in content.split(',')]
         return f"(R fbp:{'.'.join(parts)})"
 
     result = re.sub(
         r'\(\s*R\s*\[\s*([^\]]+?)\s*\]\s*\)',
-        replace_relation,
+        replace_r_relation,
         sexpr
     )
 
-    def replace_bracket(m: re.Match) -> str:
+    def replace_remaining(m: re.Match) -> str:
+        """
+        [ Lou Seal ] -> fb:Lou_Seal
+        [ sports , sports team , team mascot ] -> fbp:sports.sports_team.team_mascot
+        """
         content = m.group(1).strip().replace('，', ',')
+        # predicate
         if ' , ' in content:
             parts = [p.strip().replace(' ', '_') for p in content.split(',')]
             return f'fbp:{".".join(parts)}'
+        # entity
         else:
             return f'fb:{content.replace(" ", "_")}'
 
     result = re.sub(
         r'\[\s*([^\]]+?)\s*\]',
-        replace_bracket,
+        replace_remaining,
         result
     )
 
@@ -68,6 +76,7 @@ def transform_normed_sexpr(sexpr: str) -> str:
 
 def expand_entity_map(entity_map: dict) -> dict:
     """
+    Performs the following expansion on every entity map entry.
     { "m.03_r3": "Jamaica" } -> { "http://.../m.03_r3": "Jamaica" }
     """
     return {f"{FB_NS}{mid}": label for mid, label in entity_map.items()}
@@ -75,6 +84,7 @@ def expand_entity_map(entity_map: dict) -> dict:
 
 def expand_relation_map(relation_map: dict) -> dict:
     """
+    Performs the following expansion on every predicate map entry.
     { "location.country.languages_spoken": "..." }
     -> { "http://.../location.country.languages_spoken": "location.country.languages_spoken" }
     """
@@ -83,15 +93,19 @@ def expand_relation_map(relation_map: dict) -> dict:
 
 def expand_type_map(type_map: dict) -> dict:
     """
+    Performs the following expansion on every type map entry.
     { "m.0hzjlmp": "UK constituent country" } -> { "http://.../m.0hzjlmp": "UK constituent country" }
     """
     return {f"{FB_NS}{mid}": label for mid, label in type_map.items()}
 
 
 # ---------------------------------------------------------------------------
-# I/O
+# File handling
 
 def load_dataset(path: Path) -> list[dict]:
+    """
+    Loads an original ChatKBQA label-enriched dataset file (located at [dataset]/generation/merged/).
+    """
     text = path.read_text(encoding="utf-8")
     try:
         data = json.loads(text)
@@ -103,6 +117,9 @@ def load_dataset(path: Path) -> list[dict]:
 
 
 def load_predictions(path: Path) -> list[dict]:
+    """
+    Loads an original ChatKBQA prediction file (located at Reading/[Model]/.../generated_predictions.jsonl).
+    """
     preds = []
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
@@ -112,6 +129,10 @@ def load_predictions(path: Path) -> list[dict]:
 
 
 def build_label_index(preds: list[dict]) -> dict[str, list[dict]]:
+    """
+    Original predictions are keyed by gold sexpr instead of item id. 
+    This is used to match predictions to their corresponding dataset item.
+    """
     index: dict[str, list[dict]] = {}
     for p in preds:
         index.setdefault(p["label"], []).append(p)
@@ -119,7 +140,7 @@ def build_label_index(preds: list[dict]) -> dict[str, list[dict]]:
 
 
 # ---------------------------------------------------------------------------
-# Core
+# Fuse
 
 def fuse(
     dataset: list[dict],
@@ -128,10 +149,7 @@ def fuse(
 ) -> tuple[list[dict], dict[str, str]]:
     """
     Returns (fused_items, global_type_map).
-
-    global_type_map accumulates every entry's gold_type_map (expanded to
-    full URIs) across all items, without duplicates.  It is empty when the
-    input dataset items carry no gold_type_map field.
+    global_type_map accumulates every entry's gold_type_map across all items.  
     """
     label_index = build_label_index(preds)
     fused: list[dict] = []
@@ -142,14 +160,17 @@ def fuse(
         gold_sexpr = item.get("normed_sexpr", "")
 
         pred_entry = None
+        # find prediction file entry by current item's gold sexpr
         if gold_sexpr in label_index and label_index[gold_sexpr]:
             pred_entry = label_index[gold_sexpr].pop(0)
+            
+        # fallback to positional match if not found
         elif i < len(preds):
             pred_entry = preds[i]
             if pred_entry["label"] != gold_sexpr:
                 print(
                     f"[WARN] item {i} ({item.get('ID', '?')}): "
-                    f"normed_sexpr != label\n"
+                    f"No prediction matching prediction found\n"
                     f"  dataset : {gold_sexpr!r}\n"
                     f"  preds   : {pred_entry['label']!r}"
                 )
@@ -166,17 +187,20 @@ def fuse(
         answer_list = item.get("answer", [])
         answers = [[answer] for answer in answer_list]
 
-        # Expand and accumulate the type map
+        # Accumulate global type map
         raw_type_map = item.get("gold_type_map", {})
         expanded_type_map = expand_type_map(raw_type_map) if raw_type_map else {}
         global_type_map.update(expanded_type_map)
 
+        # Create output item
         fused_item = {
+            # remove obsolete keys
             **{k: v for k, v in item.items()
                if k not in (
                    "normed_sexpr", "gold_entity_map", "gold_relation_map",
                    "gold_type_map", "answer", "comp_type",
                )},
+            # add adapted fields
             "gold_entity_map":   expand_entity_map(item.get("gold_entity_map", {})),
             "gold_relation_map": expand_relation_map(item.get("gold_relation_map", {})),
             "gold_type_map":     expanded_type_map,
@@ -190,27 +214,21 @@ def fuse(
         fused.append(fused_item)
 
     if unmatched:
-        print(f"[INFO] {unmatched} item(s) fell back to positional matching")
+        print(f"[INFO] {unmatched} items might be mismatched")
     return fused, global_type_map
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset",  required=True, type=Path)
-    parser.add_argument("--preds",    required=True, type=Path)
-    parser.add_argument("--output",   required=True, type=Path)
-    parser.add_argument("--kb",       required=True)
-    parser.add_argument(
-        "--type-map", type=Path, default=None,
-        help=(
-            "Where to write the global type label map JSON. "
-        ),
-    )
+    parser.add_argument("--dataset", required=True, type=Path)
+    parser.add_argument("--preds", required=True, type=Path)
+    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--kb", required=True)
     args = parser.parse_args()
 
     dataset = load_dataset(args.dataset)
-    preds   = load_predictions(args.preds)
-    kb      = load_kb_module(args.kb)
+    preds = load_predictions(args.preds)
+    kb = load_kb_module(args.kb)
     prefixes = kb.COMMON_PREFIXES
 
     print(f"Loaded {len(dataset)} dataset items, {len(preds)} prediction entries")
@@ -221,34 +239,23 @@ def main():
         json.dumps({"items": fused}, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
-    print(f"Wrote {len(fused)} fused items → {args.output}")
+    print(f"Wrote {len(fused)} fused items to {args.output}")
 
-    # ------------------------------------------------------------------
-    # Write the global type label map when the KB produced one.
-
+    # write global type map
     if global_type_map:
-        if args.type_map is None:
-            type_map_path = args.output.with_name(
-                args.output.stem + "_type_label_map.json"
-            )
-        elif str(args.type_map) == "":
-            type_map_path = None
-        else:
-            type_map_path = args.type_map
+        type_map_path = args.output.with_name(
+            args.output.stem + "_type_label_map.json"
+        )
 
-        if type_map_path is not None:
-            type_map_path.parent.mkdir(parents=True, exist_ok=True)
-            type_map_path.write_text(
-                json.dumps(global_type_map, indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
-            print(
-                f"Wrote global type label map "
-                f"({len(global_type_map)} entries) → {type_map_path}"
-            )
-    else:
-        print("No gold_type_map entries found: type label map not written ")
-
+        type_map_path.parent.mkdir(parents=True, exist_ok=True)
+        type_map_path.write_text(
+            json.dumps(global_type_map, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        print(
+            f"Wrote global type label map "
+            f"({len(global_type_map)} entries) -> {type_map_path}"
+        )
 
 if __name__ == "__main__":
     main()

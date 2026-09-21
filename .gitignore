@@ -208,3 +208,7 @@ env_cluster.sh
 configs/
 results/
 Freebase-Setup/
+Data/Data/
+Data/LLMdata/
+Data/Models/
+Data/MyModels/

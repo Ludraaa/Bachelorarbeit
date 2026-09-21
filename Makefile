@@ -9,12 +9,7 @@
         help-download-qald7 \
         help-download-qald10 \
         help-download-lcquad2 \
-        help-freebase-install \
-        help-freebase-start \
-        help-freebase-stop \
         help-pipeline \
-        help-run \
-        help-check-run-config \
         help-convert \
         help-labels \
         help-prepare \
@@ -451,7 +446,7 @@ help-eval:
 
 help-demo-qald7-full:
 	@echo "============================================================"
-	@echo "demo_qald7_full"
+	@echo "demo-qald7-full"
 	@echo "============================================================"
 	@echo "Description:"
 	@echo "  Run the complete QALD-7 Wikidata demonstration pipeline."
@@ -480,7 +475,7 @@ help-demo-qald7-full:
 
 help-demo-qald7-no-train:
 	@echo "============================================================"
-	@echo "demo_qald7_no_train"
+	@echo "demo-qald7-no-train"
 	@echo "============================================================"
 	@echo "Description:"
 	@echo "  Run the QALD-7 demo using an existing trained model."
@@ -507,7 +502,7 @@ help-demo-qald7-no-train:
 
 help-demo-qald7-no-train-no-generate:
 	@echo "============================================================"
-	@echo "demo_qald7_no_train_no_generate"
+	@echo "demo-qald7-no-train-no-generate"
 	@echo "============================================================"
 	@echo "Description:"
 	@echo "  Run QALD-7 resolution and evaluation using existing predictions."
