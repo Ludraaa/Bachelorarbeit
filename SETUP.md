@@ -1,4 +1,5 @@
-Note: If you are running the container with the existing NFS data (accessible only on uni-freiburg PCs), all of these steps are already done. Once in the container, start Freebase using:
+Note: If you are running the container with the existing NFS data (accessible only on uni-freiburg PCs), all of these steps are already done. Once in the container, Freebase can
+be started using:
 ```
 cd Freebase-Setup/
 python3 virtuoso.py start 3001 -d virtuoso_db
@@ -13,12 +14,13 @@ Upon mounting an empty external volume to the container, the following folder st
     * `Configs/`          - all run, training, dataset and inference configs go into the corresponding subfolders of this folder. Inside the subfolders, the configs may be organized as
                             desired. Add new configs here to control the desired behavior of the pipeline.
     * `Data/`             - this is where the actual output files of the pipeline steps go. This folder should not have to be manually touched a lot.
-    * `Freebase-Setup/`   - more on this in the section below.
+    * `Freebase-Setup/`   - more on this in the section below. This is not mandatory.
     * `LLMdata/`          - this is where training datasets to be used by Llamafactory live. This should also not require any manual effort.
     * `Models/`           - this folder stores base models to be used for finetuning. You may follow the steps in the corresponding section to download any model wanted for finetuning. 
                             Make sure the name in the training config matches the folder name of the model.
     * `MyModels/`         - here live the finetuned adapters
-    * `Results/`          - contains the single result json file that accumulates the scores of all runs
+    * `Results/`          - contains the single result json file that accumulates the scores of
+                            all runs
 
 ---
 
@@ -29,6 +31,8 @@ While any knowledge base works in theory (even WDQS, for example), it is pretty 
 ### Freebase
 
 While any local variant works, to stay as comparable to the original ChatKBQA as possible, we use the same virtuoso setup they used. More information on that setup can be found here: https://github.com/dki-lab/Freebase-Setup/blob/master/README.md
+
+The complete Freebase setup can be placed in the mounted data directory as described above. However, its physical location is not important for the pipeline: experiments only require the URL of a working SPARQL endpoint.
 
 Additionally, the FACC1 index has to be downloaded. Below are the steps as described in ChatKBQA:
 
@@ -42,7 +46,6 @@ Additionally, the FACC1 index has to be downloaded. Below are the steps as descr
             ├── entity_list_file_freebase_complete_all_mention
             └── surface_map_file_freebase_complete_all_mention                                           
 ```
-
 
 ### Wikidata
 

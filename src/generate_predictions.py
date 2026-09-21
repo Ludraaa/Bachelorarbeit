@@ -39,6 +39,8 @@ def parse_args():
                              "Higher values = more diverse but potentially less coherent outputs. "
                              "Recommended: ~1.0 for Llama, ~0.5 for Qwen")
     parser.add_argument("--run_config", type=str, default=None)
+    parser.add_argument("--oracle", action="store_true",
+                        help="Skip inference and directly output the ground truth (sexpr_with_labels) as the single prediction.")
 
     apply_run_config_defaults(parser, section="generate", config_ref_key="infer_config")
 
@@ -149,6 +151,7 @@ def _run_manifest_dict(args) -> dict:
         "num_beams": args.num_beams,
         "max_new_tokens": args.max_new_tokens,
         "diversity_penalty": args.diversity_penalty,
+        "oracle": args.oracle,
     }
 
 
@@ -156,6 +159,11 @@ def _check_or_write_manifest(run_dir: str, manifest: dict) -> None:
     path = os.path.join(run_dir, "run_manifest.json")
     if os.path.exists(path):
         existing = json.loads(Path(path).read_text(encoding="utf-8"))
+        
+        # Handle graceful resume for older manifests missing the oracle key
+        if "oracle" not in existing:
+            existing["oracle"] = False
+            
         if existing != manifest:
             raise ValueError(
                 f"Run folder already exists with different parameters: {run_dir}\n"
@@ -205,6 +213,7 @@ def _build_meta(
         "mode":                args.mode,
         "kb":                  args.kb,
         "model_id":            model_id,
+        "oracle":              args.oracle,
         "num_beams_requested": args.num_beams,
         "max_new_tokens":      args.max_new_tokens,
         "diversity_penalty":   args.diversity_penalty,
@@ -302,17 +311,22 @@ def main():
     # Load KB module
     kb_instance = load_kb_module(args.kb)
 
-    print("Initialising ChatModel...")
-    chat_model = ChatModel(cfg)
-    engine = chat_model.engine
+    # Always determine the actual model_id so the directory path is identical to inference runs
+    model_id = Path(cfg.get("adapter_name_or_path") or cfg["model_name_or_path"]).name
+
+    if args.oracle:
+        print("Oracle mode enabled. Skipping model initialization.")
+        engine = None
+    else:
+        print("Initialising ChatModel...")
+        chat_model = ChatModel(cfg)
+        engine = chat_model.engine
 
     data_dir = os.environ.get("DATA_DIR", "data")
     data = load_dataset(args.dataset, args.split, args.mode, data_dir)
     if args.max_samples:
         data = data[:args.max_samples]
         print(f"Capped to {len(data)} examples")
-
-    model_id = Path(cfg.get("adapter_name_or_path") or cfg["model_name_or_path"]).name
 
     # e.g. configs/runs/Wikidata/Qald7/grisp.yaml -> "grisp"
     run_stem = Path(args.run_config).stem
@@ -344,12 +358,14 @@ def main():
             results[idx] = done[idx]
             continue
 
-        messages = [{"role": "user", "content": build_question(item["question"])}]
-
-        preds = generate_beams(
-            engine, messages, args.num_beams, args.max_new_tokens,
-            args.diversity_penalty
-        )
+        if args.oracle:
+            preds = [item.get("sexpr_with_labels") or item.get("sexpr", "")]
+        else:
+            messages = [{"role": "user", "content": build_question(item["question"])}]
+            preds = generate_beams(
+                engine, messages, args.num_beams, args.max_new_tokens,
+                args.diversity_penalty
+            )
 
         record = {**item, "predict": preds}
         results[idx] = record
@@ -385,6 +401,8 @@ def main():
     print(f"\n{'='*55}")
     print(f"  Dataset:              {args.dataset} / {args.split} / {args.mode}")
     print(f"  Model:                {model_id}")
+    if args.oracle:
+        print("  Mode:                 Oracle (Ground Truth)")
     print(f"  Items:                {num_items}")
     print(f"  Diversity penalty:    {args.diversity_penalty}")
     print(f"  Gold @ rank 0:        {meta['gold_at_rank0_count']}  ({meta['gold_at_rank0_pct']}%)")

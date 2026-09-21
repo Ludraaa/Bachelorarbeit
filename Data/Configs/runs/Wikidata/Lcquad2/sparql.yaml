@@ -23,6 +23,7 @@ resolve:
   linker_params: {}
   label_fallback: false
   debug: true
+  max_samples: 2850
 
 eval:
   get_live_gold: true

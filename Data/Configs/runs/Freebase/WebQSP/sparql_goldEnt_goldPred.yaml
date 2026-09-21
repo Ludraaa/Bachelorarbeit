@@ -1,0 +1,28 @@
+dataset: WebQSP
+split: test
+mode: sparql
+kb: freebase
+endpoint_url: "http://localhost:3001/sparql"
+note: "official run"
+
+entity_linkers: "SimpleGold"
+predicate_linkers: "SimpleGold"
+
+dataset_config: configs/datasets/WebQSP.yaml
+training_config: configs/training/Freebase/WebQSP/Qwen25-7b_sparql.yaml
+infer_config: configs/infer/default.yaml
+
+generate:
+  num_beams: 8
+  diversity_penalty: 0.4
+
+resolve:
+  k1_per_pass: "100,5"
+  k2_per_pass: "5,15"
+  beam_limits: "8"
+  linker_params: {}
+  label_fallback: false
+  debug: true
+
+eval:
+  get_live_gold: true
