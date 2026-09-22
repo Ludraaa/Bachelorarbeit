@@ -1,7 +1,5 @@
 import os
 import re
-import json
-import atexit
 import subprocess
 import threading
 import base64

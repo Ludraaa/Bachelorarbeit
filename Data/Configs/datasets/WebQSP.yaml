@@ -2,7 +2,7 @@ format: nested
 
 root: Questions
 nested: Parses
-parse_strategy: first_success
+parse_strategy: first
 
 inherit:
   QuestionId: question_id

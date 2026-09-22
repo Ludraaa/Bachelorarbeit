@@ -3,7 +3,7 @@ import re
 import argparse
 from pathlib import Path
 
-from src.utils.sparql_exec import normalise_gold_sparql
+from src.utils.sparql_exec import normalize_gold_sparql
 from src.utils.kb import load_kb_module
 
 FB_NS = "http://rdf.freebase.com/ns/"
@@ -180,7 +180,7 @@ def fuse(
 
         sparql_query = item.get("sparql", "")
         normed, _ = (
-            normalise_gold_sparql(sparql_query, common_prefixes)
+            normalize_gold_sparql(sparql_query, common_prefixes)
             if sparql_query else (None, None)
         )
 

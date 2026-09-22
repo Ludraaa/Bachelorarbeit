@@ -11,8 +11,8 @@ from src.utils.sparql_exec import (
 
 from src.utils.kb import load_kb_module
 from src.kb.base import BaseKB
-from sexpr.jena_interface import fix_sparql_for_jena, detect_query_form, restore_query_form
-from sexpr.jena_interface import sparql_to_algebra, algebra_to_sparql, strip_prefix_and_expand
+from src.sexpr.jena_interface import fix_sparql_for_jena, detect_query_form, restore_query_form
+from src.sexpr.jena_interface import sparql_to_algebra, algebra_to_sparql, strip_prefix_and_expand
 from src.utils.run_config import apply_run_config_defaults, require
 
 MODES  = ("jena", "sparql")
@@ -89,7 +89,7 @@ def load_config(config_path: str) -> dict:
 def _apply_field_mapping(source: dict, field_map: dict) -> dict:
     """
     Applies a defined field map to an existing dictionary. All keys in the 
-    target dictionary are replaced by the values of the field map (if key matches).
+    target dictionary are renamed to the values of the field map (if key matches).
     """
     entry: dict = {}
 
@@ -127,9 +127,9 @@ def extract_flat_entries(data: list | dict, config: dict) -> list[dict]:
     """
     Apply field mapping to a dataset without nested structure.
     """
-    root_key = config.get("root")
+    root_key = config.get("root", "")
 
-    if root_key is not None:
+    if root_key:
         if not isinstance(data, dict):
             raise ValueError(
                 "'root' is only supported for dictionary-based datasets."
@@ -311,9 +311,11 @@ def process_split(
     endpoint_url = os.environ.get("ENDPOINT_URL")
 
     if not endpoint_url:
-        print("[ERROR]: ENDPOINT_URL not set")
-        return
-
+        raise ValueError((
+            "$(ENDPOINT_URL) is not set. Run using the Makefile "
+            "to automatically set it to the run config's value."
+            ))
+    
     # Create scratch file for incremental write
     jsonl_path = build_jsonl_scratch_path(dataset_name, split, mode)
     os.makedirs(os.path.dirname(jsonl_path), exist_ok=True)
@@ -394,7 +396,7 @@ def process_split(
                 entry["Sexpr"] = "Parsing failed"
                 conv_failed += 1
                 failed_ids.append(qid)
-                print(f"[ERROR] Parse Failed: ({e})")
+                print(f"[WARN] Parse Failed: ({e})")
 
         jsonl_f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
@@ -427,7 +429,7 @@ def process_split(
 
     os.remove(jsonl_path)
 
-    print(f"Saved: {out_path}")
+    print(f"Saved to: {out_path}")
 
     return {
         "dataset": dataset_name,
@@ -453,9 +455,8 @@ def print_final_overview(results: list[dict]) -> None:
     """
     Prints overall statistics about success rate, errors and mismatches per split.
     """
-    print(f"\n{'=' * 60}")
-    print("Overview (all splits)")
-    print(f"{'=' * 60}")
+    print(f"\n{'-' * 60}")
+    print("Overview")
 
     for r in results:
         print(f"\nSplit: {r['split']}")
@@ -473,7 +474,7 @@ def print_final_overview(results: list[dict]) -> None:
             if ids:
                 path = build_debug_report_path(r["dataset"], r["split"], r["mode"], kind)
                 write_id_report(path, ids)
-                print(f"  -> wrote {len(ids)} id(s) to {path}")
+                print(f"  -> Wrote {len(ids)} ids to {path}")
 
 
 # ---------------------------------------------------------------------------
@@ -484,42 +485,11 @@ def main() -> None:
     )
     parser.add_argument("--dataset", default=None, help="Dataset name")
     parser.add_argument("--mode", choices=MODES, default="sparql", help="Conversion target")
-    parser.add_argument(
-        "--kb", 
-        default="wikidata",                
-        help=(
-            "KB module. The KB module defines the SPARQL query used"
-            "to retrieve entity and predicate labels."
-        )
-    )
-    parser.add_argument("--config", default=None, help="Optional YAML config for dataset")
-    parser.add_argument("--run_config", type=str, default=None,
-                        help="Path to configs/run/<name>.yaml"
-                        )
-    parser.add_argument(
-        "--no_mismatch_analysis",
-        action="store_true",
-        default=False,
-        help=(
-            "Skip raw (unnormalised) gold execution and the raw-vs-normed "
-            "mismatch check. Use this for datasets whose gold SPARQL doesn't "
-            "declare prefixes, so raw execution would fail for every entry. "
-            "Staleness ('empty result') detection falls back to the normed "
-            "gold query in this mode."
-        ),
-    )
-    parser.add_argument(
-        "--no_gold_exec",
-        action="store_true",
-        default=False,
-        help=(
-            "Skip gold execution entirely -- neither the raw nor the normed gold "
-            "query is run against the endpoint, and no 'answer' / 'gold_raw_answer' "
-            "fields are written. Use this when some gold queries return results too "
-            "large to hold in memory, or time out against the endpoint. Implies "
-            "--no_mismatch_analysis (nothing left to compare)."
-        ),
-    )
+    parser.add_argument("--kb", default=None, help=("KB module name."))
+    parser.add_argument("--config", default=None, help="YAML config for dataset normalization")
+    parser.add_argument("--run_config", type=str, default=None, help="Path to configs/run/<name>.yaml")
+    parser.add_argument("--no_mismatch_analysis", action="store_true", default=False, help=("Skip raw (unnormalised) gold execution and the raw-vs-normed mismatch check"))
+    parser.add_argument("--no_gold_exec", action="store_true", default=False,help=("Skip gold execution entirely"))
 
     apply_run_config_defaults(parser, section="convert", config_ref_key="dataset_config")
 
