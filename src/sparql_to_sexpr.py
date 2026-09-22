@@ -123,17 +123,33 @@ def _apply_field_mapping(source: dict, field_map: dict) -> dict:
     return entry
 
 
-def extract_flat_entries(data: list, config: dict) -> list[dict]:
+def extract_flat_entries(data: list | dict, config: dict) -> list[dict]:
     """
     Apply field mapping to a dataset without nested structure.
     """
+    root_key = config.get("root")
+
+    if root_key is not None:
+        if not isinstance(data, dict):
+            raise ValueError(
+                "'root' is only supported for dictionary-based datasets."
+            )
+
+        # Discard irrelevant meta block
+        data = data.get(root_key)
+
+    # Root is not a list
+    if not isinstance(data, list):
+        raise ValueError("Flat dataset must contain a list of entries.")
+
     field_map = config.get("fields", {})
     if not field_map:
         return data
+
     return [_apply_field_mapping(item, field_map) for item in data]
 
 
-def extract_nested_entries(data: dict, config: dict) -> list[dict]:
+def extract_nested_entries(data: dict | list, config: dict) -> list[dict]:
     """
     Unpack a dataset with nested structure into a flat dataset.
     The specific behavior is controlled entirely by the dataset config.
@@ -145,8 +161,8 @@ def extract_nested_entries(data: dict, config: dict) -> list[dict]:
     if parse_strategy not in ["first", "all"]:
         raise ValueError("parse_strategy must be one of 'first' or 'all'.")
 
-    if not root_key or not nested_key:
-        raise ValueError("Nested config requires 'root' and 'nested'")
+    if not nested_key:
+        raise ValueError("Nested config requires 'nested'")
 
     inherit_map = config.get("inherit", {})
     field_map = config.get("fields", {})
@@ -154,14 +170,16 @@ def extract_nested_entries(data: dict, config: dict) -> list[dict]:
     if not isinstance(field_map, dict):
         raise ValueError("'fields' must be a dictionary")
 
-    parents = data.get(root_key)
+    if root_key is not None:
+        if not isinstance(data, dict):
+            raise ValueError("'root' requires top level dataset to be a dictionary ")
+        data = data.get(root_key)
 
-    if not isinstance(parents, list):
-        raise ValueError(f"'{root_key}' must contain a list")
-
+    if not isinstance(data, list):
+        raise ValueError("Nested dataset must contain a list of parent entries.")
     out = []
 
-    for parent in parents:
+    for parent in data:
         # Write fields of the outer map to the inner map
         inherited = {
             new_name: parent.get(old_name)
@@ -208,21 +226,19 @@ def load_dataset(path: str, config: dict | None = None) -> list[dict]:
     if not config:
         raise ValueError("No dataset config provided.")
     
-    fmt = config.get("format")
-    
-    # Nested dataset (like WebQSP)
+    fmt = config.get("format", "flat")
+
     if fmt == "nested":
         return extract_nested_entries(data, config)
 
-    # Flat dataset
-    if isinstance(data, list):
+    if fmt == "flat":
         return extract_flat_entries(data, config)
 
-    # Unknown dataset type
     raise ValueError(
-        "Unsupported dataset structure. "
-        "Use a nested config or provide a list dataset."
+        f"Unsupported dataset format '{fmt}'. "
+        "Expected 'flat' or 'nested'."
     )
+
 
 
 # ---------------------------------------------------------------------------

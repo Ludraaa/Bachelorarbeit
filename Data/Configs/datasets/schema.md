@@ -30,17 +30,16 @@ A nested dataset contains multiple levels of objects. Typically, information tha
 For example, WebQSP stores the question and its possible parses separately:
 
 ```yaml
-Questions:
-  - QuestionId: example-1
-    RawQuestion: "Who wrote ...?"
-    Parses:
-      - ParseId: 0
-        Sparql: "SELECT ..."
-      - ParseId: 1
-        Sparql: "SELECT ..."
+- QuestionId: example-1
+  RawQuestion: "Who wrote ...?"
+  Parses:
+  - ParseId: 0
+    Sparql: "SELECT ..."
+  - ParseId: 1
+    Sparql: "SELECT ..."
 ```
 
-Setting `format` to `nested` allows these structures to be converted into the flat representation expected by the pipeline. The `root`, `nested`, `parse_strategy`, and `inherit` options control how this conversion is performed.
+Setting `format` to `nested` allows these structures to be converted into the flat representation expected by the pipeline. The `nested`, `parse_strategy`, and `inherit` options control how this conversion is performed.
 
 **Possible values:** `flat`, `nested`
 
@@ -51,20 +50,6 @@ Setting `format` to `nested` allows these structures to be converted into the fl
 ## Nested Dataset Options
 
 The following options are only used when `format` is set to `nested`.
-
-### `root`
-
-Specifies the key containing the list of parent objects.
-
-**Type:** `string`
-
-**Required:** Yes
-
-For the WebQSP example above:
-
-```yaml
-root: Questions
-```
 
 ### `nested`
 
@@ -131,6 +116,20 @@ converts the parent fields `QuestionId` and `RawQuestion` into the common fields
 This option is only used with `format: nested`.
 
 ---
+
+### `root`
+
+Specifies the key containing the list of parent objects.
+
+**Type:** `string`
+
+**Required:** Yes
+
+For the WebQSP example above:
+
+```yaml
+root: Questions
+```
 
 ## Field Mapping
 
