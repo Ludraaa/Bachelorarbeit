@@ -100,7 +100,7 @@ class BaseKB(ABC):
 
     # answer normalization
 
-    def normalise_answer_uri(self, uri: str) -> str:
+    def normalize_answer_uri(self, uri: str) -> str:
         """
         Strip a full URI down to the KB-local identifier. Tries all defined
         ANSWER_URI_PATTERNS in order and returns the first match's group(1).

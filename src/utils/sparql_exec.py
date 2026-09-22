@@ -2,7 +2,6 @@ import re
 import requests
 
 from src.utils.retry import call_with_retry
-
 from src.sexpr.jena_interface import (
     fix_sparql_for_jena,
     sparql_to_algebra,
@@ -12,29 +11,17 @@ from src.sexpr.jena_interface import (
     restore_query_form,
 )
 
+
 _SPARQL_HEADERS = {
     "Accept":     "application/sparql-results+json",
     "User-Agent": "kbqa_pipeline/1.0",
 }
 
-_FALLBACK_LOC_RE = re.compile(r"/([^/]+)$")
-
-_normalise_uri: callable = lambda uri: (
-    m.group(1) if (m := _FALLBACK_LOC_RE.search(uri)) else uri
-)
-
-
-def init_uri_normaliser(kb_module) -> None:
-    global _normalise_uri
-    fn = getattr(kb_module, "normalise_answer_uri", None)
-    if callable(fn):
-        _normalise_uri = fn
-
 
 # ---------------------------------------------------------------------------
 # Gold SPARQL normalisation
 
-def normalise_gold_sparql(sparql: str, common_prefixes) -> tuple[str | None, str | None]:
+def normalize_gold_sparql(sparql: str, common_prefixes) -> tuple[str | None, str | None]:
     try:
         fixed   = fix_sparql_for_jena(sparql, common_prefixes)
         form    = detect_query_form(fixed)
@@ -81,7 +68,7 @@ def execute_sparql(sparql: str, endpoint: str, timeout: int = 30):
 # ---------------------------------------------------------------------------
 # Result normalisation
 
-def bindings_to_rows(results) -> list[list[str]]:
+def bindings_to_rows(results, kb) -> list[list[str]]:
     """
     Convert raw SPARQL endpoint results into the list-of-rows format required
     by assignment_f1_score: each result row becomes a list of normalised value
@@ -91,8 +78,7 @@ def bindings_to_rows(results) -> list[list[str]]:
       ASK  →  [["true"]] / [["false"]]
       SELECT binding dicts  →  [[val, ...], ...]
 
-    Non-English literals are dropped. URI values are reduced to their local
-    name via _normalise_uri (KB-specific, set by init_uri_normaliser).
+    Non-English literals are dropped. URI values are reduced to their local name.
     """
     if isinstance(results, bool):
         return [[str(results).lower()]]
@@ -113,7 +99,7 @@ def bindings_to_rows(results) -> list[list[str]]:
                 continue
             raw = val.get("value", "")
             if val.get("type") == "uri":
-                values.append(_normalise_uri(raw))
+                values.append(kb.normalize_answer_uri(raw))
             else:
                 lang = val.get("xml:lang", "")
                 if lang and lang != "en":
