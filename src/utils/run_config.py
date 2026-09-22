@@ -1,9 +1,8 @@
 import json
 from pathlib import Path
-
 import yaml
 
-# Keys that live at the top level of a run config and are shared by more than one pipeline step
+# Keys shared between multiple pipeline steps. These are defined at the top level of the run config.
 _COMMON_KEYS = (
     "dataset",
     "split",
@@ -15,8 +14,7 @@ _COMMON_KEYS = (
     "predicate_linkers",
 )
 
-# Keys whose YAML-native type must be flattened 
-
+# Keys that represent list objects
 _LIST_KEYS = (
     "beam_limits",
     "k1_per_pass",
@@ -26,10 +24,15 @@ _LIST_KEYS = (
     "entity_linkers",
     "predicate_linkers",
 )
+
+# Keys that represent dict objects
 _DICT_KEYS = ("linker_params",)
 
 
 def load_run_config(path: str) -> dict:
+    """
+    Loads the YAML run config specified by path.
+    """
     with open(path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
     if "name" not in cfg:
@@ -38,6 +41,9 @@ def load_run_config(path: str) -> dict:
 
 
 def _default_name(path: str) -> str:
+    """
+    Derive a basic run name based on the relative path of a run config.
+    """
     p = Path(path).with_suffix("")
     parts = p.parts
     if "run" in parts:
@@ -49,6 +55,9 @@ def _default_name(path: str) -> str:
 
 
 def _normalize(key: str, value):
+    """
+    Turns any YAML value into the string representation needed by argparse.
+    """
     if value is None:
         return None
     if key in _LIST_KEYS:
@@ -62,7 +71,8 @@ def _normalize(key: str, value):
 
 def model_id_from_training_config(path: str) -> str:
     """
-    Single source of truth for the model_id.
+    Define the training config's output dir (or model_name_or_path if absent) as the run's specific model id.
+    This is done to avoid specifying separately in training, infer and run config.
     """
     with open(path, encoding="utf-8") as f:
         train_cfg = yaml.safe_load(f)
@@ -76,30 +86,35 @@ def apply_run_config_defaults(
     config_ref_key: str | None = None,
 ) -> None:
     """
-    Pre-scans sys.argv for --run_config, loads it, and sets parser defaults
-    so that: explicit CLI flag > run_config value > script's own default.
+    Sets the parser defaults to the values defined in the run config.
+    This allows args to be assigned using: explicit CLI flag > run_config value > script's own default
     """
     pre, _ = parser.parse_known_args()
     if not getattr(pre, "run_config", None):
         return
 
+    # Get args defined by script
     cfg = load_run_config(pre.run_config)
     dest_names = {a.dest for a in parser._actions}
 
+    # Assign shared key values to parser defaults if run config defines them
     flat = {}
     for k in _COMMON_KEYS:
         if k in cfg and k in dest_names:
             flat[k] = _normalize(k, cfg[k])
 
+    # Assign model id from training config
     if "model_id" in dest_names and "training_config" in cfg:
         flat["model_id"] = model_id_from_training_config(cfg["training_config"])
 
     if "run_name" in dest_names:
         flat["run_name"] = cfg.get("run_name", cfg["name"])
 
+    # Assigns the specified config referenced in run config to parser default for "config"
     if config_ref_key and config_ref_key in cfg and "config" in dest_names:
         flat["config"] = cfg[config_ref_key]
 
+    # Assign args defined for the specific pipeline step
     if section:
         for k, v in (cfg.get(section) or {}).items():
             if k not in dest_names:
@@ -114,9 +129,7 @@ def apply_run_config_defaults(
 
 def require(args, *names: str) -> None:
     """
-    Enforce that each named attribute ended up set (via CLI or run_config).
-    Needed because any arg that should be fillable from a run_config must
-    be declared `required=False` in argparse.
+    Enforce that all arguments are actually set.
     """
     missing = [n for n in names if getattr(args, n, None) in (None, "")]
     if missing:
@@ -129,9 +142,7 @@ def require(args, *names: str) -> None:
 
 def validate_choice(args, name: str, choices) -> None:
     """
-    argparse's `choices=` is only checked against values that come from
-    actual CLI strings, not against values injected via set_defaults().
-    This re-checks a value that may have come from a run_config instead.
+    Verify that assigned parser defaults comply with choice arguments.
     """
     val = getattr(args, name, None)
     if val is not None and val not in choices:

@@ -465,7 +465,7 @@ def print_final_overview(results: list[dict]) -> None:
         print(f"  Empty gold results (stale dataset?) : {r['stale_count']}")
         print(f"  Raw vs normed gold result mismatch  : {r['mismatch_count']}")
 
-        # Write IDs of problematic dataset items to seperate debug files
+        # Write IDs of problematic dataset items to separate debug files
         for kind, ids in (
             ("failed", r["failed_ids"]),
             ("stale", r["stale_ids"]),
@@ -481,8 +481,9 @@ def print_final_overview(results: list[dict]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Convert SPARQL queries in dataset splits to target representation."
-    )
+        description=("Convert SPARQL queries in dataset splits to target representation. A more detailed"
+                     "explanation of all possible parameters can be found in the run config documentation."
+    ))
     parser.add_argument("--dataset", default=None, help="Dataset name")
     parser.add_argument("--mode", choices=MODES, default="sparql", help="Conversion target")
     parser.add_argument("--kb", default=None, help=("KB module name."))
