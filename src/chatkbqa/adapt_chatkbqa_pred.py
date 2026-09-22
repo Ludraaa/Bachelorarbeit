@@ -11,7 +11,7 @@ FB_NS = "http://rdf.freebase.com/ns/"
 
 def transform_compact_sexpr(sexpr: str) -> str:
     """
-    Expand regular sexpr representation to include full URIs.
+    Expand regular sexpr representation (without labels) to include full URIs.
 
     """
     if not sexpr or sexpr == "null":

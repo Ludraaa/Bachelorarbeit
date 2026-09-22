@@ -1,5 +1,4 @@
 import re
-import sys
 from typing import List
 
 
@@ -14,6 +13,10 @@ _OPERATOR_CONVERT_MAP = {
 
 
 def normalize_operators(sexpr: str) -> str:
+    """
+    Expand shorthand operator syntax to full operator name. Original ChatKBQA requires this
+    shape to convert Sexpr -> SPARQL.
+    """
     for k, v in _OPERATOR_CONVERT_MAP.items():
         sexpr = sexpr.replace(k, v)
         sexpr = sexpr.replace(k.upper(), v)
@@ -22,6 +25,7 @@ def normalize_operators(sexpr: str) -> str:
 
 def fix_glued_reverse_marker(sexpr: str) -> str:
     return re.sub(r'\(R(?=[^\s)])', '(R ', sexpr)
+
 
 _YEAR_RE = r"\d{4}"
 _YEAR_MONTH_RE = r"\d{4}-\d{2}"
@@ -33,7 +37,12 @@ _BARE_DATE_TOKEN_RE = re.compile(
 
 
 def type_tag_bare_date_tokens(sexpr: str) -> str:
+    """
+    Attach the correct date data-type. ChatKBQA does the same thing and requires
+    tis to convert Sexpr -> SPARQL.
+    """ 
     def _tag(m: "re.Match") -> str:
+        # Logic taken from original code
         token = m.group(1)
         if len(token) == 4 and token.isdigit() and int(token) >= 3000:
             return token
@@ -43,6 +52,10 @@ def type_tag_bare_date_tokens(sexpr: str) -> str:
 
 
 def strip_freebase_prefixes(sexpr: str) -> str:
+    """
+    The retrieval step requires prefixed entities and predicates, the to_sparql() step
+    requires raw identifier without URI or prefix.
+    """
     # Convert  comparison operators 
     sexpr = normalize_operators(sexpr)
 
@@ -64,8 +77,8 @@ def strip_freebase_prefixes(sexpr: str) -> str:
 
 def lisp_to_nested_expression(lisp_string: str) -> list:
     """
-    Parses a lisp s-expression string into a nested Python list.
-    e.g. "(JOIN (R foo.bar) m.123)" → ['JOIN', ['R', 'foo.bar'], 'm.123']
+    Takes a logical form as a lisp string and returns a nested list representation of the lisp.
+    For example, "(count (division first))" would get mapped to ['count', ['division', 'first']].
     """
     stack: List = []
     current_expression: List = []
@@ -90,11 +103,16 @@ def _linearize_lisp_expression(expression: list, sub_formula_id: list) -> list:
         if isinstance(e, list) and e[0] != 'R':
             sub_formulas.extend(_linearize_lisp_expression(e, sub_formula_id))
             expression[i] = '#' + str(sub_formula_id[0] - 1)
+            
     sub_formulas.append(expression)
     sub_formula_id[0] += 1
     return sub_formulas
 
 
+# slightly adapted literal comparison handling:
+# Dataset: 2003-01-02
+# KB dump: 2003-01-02T00:00:00-08:00
+# these dominate the dataset, so a prefix matching filter is used instead of requiring exact match
 def lisp_to_sparql(lisp_program: str) -> str:
     clauses = []
     order_clauses = []
@@ -344,29 +362,6 @@ def lisp_to_sparql(lisp_program: str) -> str:
     clauses.extend(order_clauses)
 
     return '\n'.join(clauses)
-
-
-def _entity_label_fallback(sparql: str) -> str | None:
-    entities = sorted(set(re.findall(r'\bns:(m\.[A-Za-z0-9_]+)\b', sparql)))
-    if not entities:
-        return None
-
-    addlines = []
-    rewritten = sparql
-    for i, ent in enumerate(entities):
-        var = f"?ei{i}"
-        addlines.append(f'ns:{ent} rdfs:label ?en{i} . ')
-        addlines.append(f'{var} rdfs:label ?en{i} . ')
-        addlines.append(f'FILTER (langMatches( lang(?en{i}), "EN" ) )')
-        rewritten = rewritten.replace(f'ns:{ent}', var)
-
-    anchor = "FILTER (!isLiteral(?x) OR lang(?x) = '' OR langMatches(lang(?x), 'en'))"
-    lines = rewritten.split('\n')
-    for idx, line in enumerate(lines):
-        if line.strip() == anchor:
-            lines = lines[:idx + 1] + addlines + lines[idx + 1:]
-            return '\n'.join(lines)
-    return None
 
 
 

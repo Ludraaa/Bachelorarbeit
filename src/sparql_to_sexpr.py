@@ -2,7 +2,6 @@ import argparse
 import json
 import os
 import yaml
-import importlib.util
 
 from src.utils.sparql_exec import (
     init_uri_normaliser,
@@ -12,19 +11,16 @@ from src.utils.sparql_exec import (
 )
 
 from src.utils.kb import load_kb_module
-
 from sexpr.jena_interface import fix_sparql_for_jena, detect_query_form, restore_query_form
 from sexpr.jena_interface import sparql_to_algebra, algebra_to_sparql, strip_prefix_and_expand
-
 from src.utils.run_config import apply_run_config_defaults, require
-
 
 MODES  = ("jena", "sparql")
 SPLITS = ("dev", "test", "train")
 
 
 # ---------------------------------------------------------------------------
-# file things
+# File handling
 
 def get_split_files(dataset_name: str) -> list[tuple[str, str]]:
     data_dir   = os.environ.get("DATA_DIR", "data")
@@ -423,8 +419,12 @@ def main() -> None:
         description="Convert SPARQL queries in dataset splits to target representation."
     )
     parser.add_argument("--dataset", default=None, help="Dataset name")
-    parser.add_argument("--mode", choices=MODES, default="sparql", help="Conversion mode")
-    parser.add_argument("--kb", default="wikidata", help="KB module")
+    parser.add_argument("--mode", choices=MODES, default="sparql", help="Conversion target")
+    parser.add_argument("--kb", default="wikidata", 
+                        help=(
+                        "KB module. The KB module defines the SPARQL query"
+                            )
+                        )
     parser.add_argument("--config", default=None, help="Optional YAML config for dataset")
     parser.add_argument("--run_config", type=str, default=None,
                         help="Path to configs/run/<name>.yaml"
