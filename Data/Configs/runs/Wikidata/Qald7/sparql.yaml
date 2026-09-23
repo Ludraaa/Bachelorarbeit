@@ -12,6 +12,9 @@ dataset_config: configs/datasets/default.yaml
 training_config: configs/training/Wikidata/Qald7/sparql.yaml
 infer_config: configs/infer/default.yaml
 
+labels:
+  debug: true
+
 generate:
   num_beams: 8
   diversity_penalty: 0.4

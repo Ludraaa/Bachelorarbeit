@@ -4,6 +4,11 @@ from pathlib import Path
 
 
 def load_kb_module(kb_name: str):
+    """
+    Tries to load a KB-module from a provided name. Searches for a file in src/kb/{kb_name}.py that defines
+    a subclass of BaseKB named kb_name.capitalize().
+    """
+    # No such file
     path = Path(f"src/kb/{kb_name}.py")
     if not path.is_file():
         print(f"Error: KB module not found: {path}", file=sys.stderr)
@@ -13,6 +18,7 @@ def load_kb_module(kb_name: str):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
+    # Load KB class defined in file
     class_name = kb_name.capitalize()
     kb_class = getattr(module, class_name, None)
     if kb_class is None:

@@ -1,5 +1,4 @@
 import pytest
-import json
 from src.utils.kb import load_kb_module
 
 from src.sparql_to_sexpr import (

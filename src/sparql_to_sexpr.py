@@ -13,7 +13,7 @@ from src.utils.kb import load_kb_module
 from src.kb.base import BaseKB
 from src.sexpr.jena_interface import fix_sparql_for_jena, detect_query_form, restore_query_form
 from src.sexpr.jena_interface import sparql_to_algebra, algebra_to_sparql, strip_prefix_and_expand
-from src.utils.run_config import apply_run_config_defaults, require
+from src.utils.run_config import apply_run_config_defaults, require, validate_choice
 
 MODES  = ("jena", "sparql")
 SPLITS = ("dev", "test", "train")
@@ -484,18 +484,19 @@ def main() -> None:
         description=("Convert SPARQL queries in dataset splits to target representation. A more detailed"
                      "explanation of all possible parameters can be found in the run config documentation."
     ))
-    parser.add_argument("--dataset", default=None, help="Dataset name")
+    parser.add_argument("--dataset", help="Dataset name")
     parser.add_argument("--mode", choices=MODES, default="sparql", help="Conversion target")
-    parser.add_argument("--kb", default=None, help=("KB module name."))
-    parser.add_argument("--config", default=None, help="YAML config for dataset normalization")
-    parser.add_argument("--run_config", type=str, default=None, help="Path to configs/run/<name>.yaml")
-    parser.add_argument("--no_mismatch_analysis", action="store_true", default=False, help=("Skip raw (unnormalised) gold execution and the raw-vs-normed mismatch check"))
-    parser.add_argument("--no_gold_exec", action="store_true", default=False,help=("Skip gold execution entirely"))
+    parser.add_argument("--kb", help=("KB module name."))
+    parser.add_argument("--config", default="configs/datasets/default.yaml", help="YAML config for dataset normalization")
+    parser.add_argument("--run_config", help="Path to configs/run/<name>.yaml")
+    parser.add_argument("--no_mismatch_analysis", action="store_true", help=("Skip raw (unnormalised) gold execution and the raw-vs-normed mismatch check"))
+    parser.add_argument("--no_gold_exec", action="store_true", help=("Skip gold execution entirely"))
 
     apply_run_config_defaults(parser, section="convert", config_ref_key="dataset_config")
 
     args = parser.parse_args()
-    require(args, "dataset")
+    require(args, "dataset", "mode", "kb", "config")
+    validate_choice(args, "mode", MODES)
 
     # Load dataset split files
     dataset = args.dataset

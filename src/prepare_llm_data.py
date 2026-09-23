@@ -7,17 +7,13 @@ from pathlib import Path
 from src.utils.run_config import apply_run_config_defaults, require
 
 # ---------------------------------------------------------------------------
-# args
+# Arg handling
 
 def _parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', default=None, type=str,
-                        help="Dataset name, e.g. WebQSP — resolves to data/{dataset}/generation/merged/")
-    parser.add_argument('--split', default='train', type=str,
-                        help="Split to process: train | dev | test (default: train)")
-    parser.add_argument('--run_config', default=None, type=str,
-                        help="Path to configs/run/<name>.yaml; values become defaults, "
-                             "explicit flags still override.")
+    parser.add_argument('--dataset', type=str, help="Dataset name")
+    parser.add_argument('--split', default='train', type=str, help="Split to process")
+    parser.add_argument('--run_config', type=str, help="Path to configs/run/<name>.yaml")
 
     apply_run_config_defaults(parser, section="prepare")
 
@@ -27,7 +23,7 @@ def _parse_args():
 
 
 # ---------------------------------------------------------------------------
-# file stuff
+# File handling
 
 def load_data(split, args):
     data_dir = os.getenv("DATA_DIR", "data")
@@ -52,7 +48,7 @@ def load_data(split, args):
     return data_by_mode
 
 # ---------------------------------------------------------------------------
-# processing
+# Process
 
 def prepare_dataloader(args, split):
     data_by_mode = load_data(split, args)
@@ -99,6 +95,7 @@ def prepare_dataloader(args, split):
 
         register_dataset(args.dataset, f"train.{mode}")
 
+
 LLM_DIR = os.getenv("LLM_DIR", "LLMs")
 DATASET_INFO_PATH = f'{LLM_DIR}/data/dataset_info.json'
 
@@ -129,6 +126,7 @@ def register_dataset(dataset: str, split: str) -> None:
     with open(DATASET_INFO_PATH, 'w', encoding='utf-8') as f:
         json.dump(info, f, indent=2, ensure_ascii=False)
     print(f'Registered "{key}" in {DATASET_INFO_PATH}')
+
 
 if __name__ == '__main__':
     args = _parse_args()

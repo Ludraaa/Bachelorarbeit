@@ -2,35 +2,40 @@ import re
 
 from src.kb.base import BaseKB
 
-
+# Full Wikidata entity and predicate IRI base
 _WD_NS = "http://www.wikidata.org/entity/"
 _WDT_NS = "http://www.wikidata.org/prop/direct/"
 
+# Wikidata predicate pattern, including reification
 _PID_PATTERN = re.compile(
     r"http://www\.wikidata\.org/prop(?:/direct|/statement|/qualifier|/reference)?/(P\d+)"
 )
+# Wikidata entity pattern
 _QP_PATTERN = re.compile(r"http://www\.wikidata\.org/entity/([QP]\d+)")
 
+# Entity pattern in training format
 _Q_IN_SEXPR = re.compile(r"<(http://www\.wikidata\.org/entity/Q\d+)>")
+# Predicate pattern in training format
 _P_IN_SEXPR = re.compile(
     r"<(http://www\.wikidata\.org/(?:entity/P\d+|prop(?:/[^/]+)?/P\d+))>"
 )
 
+# Lookup table for predicate prefixes
 PREDICATE_PREFIXES: tuple[str, ...] = tuple(
     sorted(("wdt", "p", "ps", "pq", "psv", "psn", "pqv", "pqn", "pr", "prv", "prn"),
            key=len, reverse=True)
 )
 
+
 _PATH_PREFIX_LOOKAHEAD = re.compile(
     r"^\^?(?:" + "|".join(PREDICATE_PREFIXES) + r"):"
 )
 
-
 def _looks_like_path_continuation(text: str, pos: int) -> bool:
     """
-    True if text[pos:] is a SPARQL path symbol, not label content.
-    Path composition always re-prefixes each atom, so a prefix right
-    after the symbol means syntax; anything else means label text.
+    Returns True if text[pos:] is a SPARQL path symbol, not label content.
+    Path composition always prefixes each atom, so a prefix right
+    after the symbol means syntax, while anything else means label text.
     """
     rest = text[pos:]
     if rest.startswith("("):
@@ -39,7 +44,15 @@ def _looks_like_path_continuation(text: str, pos: int) -> bool:
 
 
 def _consume_predicate_label(text: str, start: int) -> str:
-    depth = 0  # parens opened as LABEL content, not path groups
+    """
+    Scan a predicate mention while distinguishing label content from
+    SPARQL property-path syntax.
+
+    Characters such as '/', '|', and parentheses may occur in labels, but
+    can also introduce property paths. Path syntax is identified by checking
+    for a predicate prefix after the respective operator.
+    """
+    depth = 0
     i = start
     n = len(text)
     while i < n:
@@ -47,9 +60,10 @@ def _consume_predicate_label(text: str, start: int) -> str:
 
         if ch in " \t\n":
             break
-
+        
+        # quantifiers/inverse
         if ch in "*+^":
-            break  # quantifiers/inverse
+            break  
 
         if ch in "/|":
             if _looks_like_path_continuation(text, i + 1):
@@ -66,15 +80,12 @@ def _consume_predicate_label(text: str, start: int) -> str:
 
         if ch == ")":
             if depth == 0:
-                break  # closes an enclosing structural group, not ours
+                break  # closes an enclosing structural group
             depth -= 1
             i += 1
             continue
 
         if ch in ".,;":
-            # A label's own trailing punctuation and a SPARQL terminator
-            # glued on with no space look identical from the string alone.
-            # Treat as structural only when directly followed by whitespace
             nxt = text[i + 1] if i + 1 < n else ""
             if nxt == "" or nxt in " \t\n":
                 break
@@ -87,9 +98,14 @@ def _consume_predicate_label(text: str, start: int) -> str:
 
 
 def _consume_entity_label(text: str, start: int) -> str:
-    # Entities never sit in path-expression position, so no operator
-    # lookahead is needed. '/', '*', '+' etc. always pass through as
-    # label content.
+    """
+    Scan an entity mention until a stop-condition is met. Stop conditions are: 
+    
+    whitespace, unbalanced parenthesis closing, ',.;' if trailing
+    
+    Entities never appear in path-expression position. As such, no operator lookahead is needed.
+    '/', '*', '+' are always treated as actual label content.
+    """
     depth = 0
     i = start
     n = len(text)
@@ -119,6 +135,7 @@ _PREDICATE_ANCHOR_RE = re.compile(
 
 class Wikidata(BaseKB):
 
+    # Prefixes used by this module
     KB_PREFIXES = {
         "wd":       _WD_NS,
         "wdt":      _WDT_NS,
@@ -135,9 +152,10 @@ class Wikidata(BaseKB):
         "wikibase": "http://wikiba.se/ontology#",
     }
 
-    #   0. {language}
-    #   1. "mul" -- language-neutral fallback label
-    #   2. anything else
+    # Label query with scored results
+    # 0: {language} (target language, in this case english)
+    # 1: "mul" -- language-neutral fallback label
+    # 2: anything else
     LABEL_QUERY = """
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         SELECT ?uri ?label ?lang WHERE {{
@@ -156,7 +174,7 @@ class Wikidata(BaseKB):
     # Wikidata has no specified types. Define an entity as a type, if either:
     # 1. Another entity is P31 ("instance of") the entity
     # 2. Another entity is P279 ("subclass of") the entity
-    # This is not perfect (even a single use as instance or subclass of -> is type), but good enough
+    # This is not perfect (even a single use as instance or subclass of -> is type), but a good enough proxy
     TYPES_QUERY = """
         SELECT DISTINCT ?uri WHERE {{
             VALUES ?uri {{ {values} }}
@@ -177,18 +195,19 @@ class Wikidata(BaseKB):
     PREDICATE_PREFIXES = PREDICATE_PREFIXES
 
     # ---------------------------------------------------------------------------
-    # label insertion
+    # Label insertion
 
     def normalize(self, uri: str) -> str | None:
         """
         Entities carry their own label, but a predicate label lives on the
-        predicate's entity instead.
+        predicate's associated entity instead.
         """
         pid_match = _PID_PATTERN.match(uri)
         if pid_match:
+            # Return associated entity
             return f"{_WD_NS}{pid_match.group(1)}"
         if _QP_PATTERN.match(uri):
-            return uri  # already canonical
+            return uri 
         return None
 
 
@@ -214,16 +233,24 @@ class Wikidata(BaseKB):
         
         return result
 
+
     def format_label(self, uri: str, label: str) -> str:
-        # case: entity
+        """
+        Formats label-enriched training data in the following schema:
+        
+        QID -> wd:Human_Readable_Label
+        PID -> {prefix}:human_readable_label
+        other -> {prefix}:{locally derived label}
+        """
+        # Case: entity
         if "/entity/Q" in uri:
             return f"wd:{label.replace(' ', '_')}" if label else ""
 
-        # case: property
+        # Case: predicate and non-wikidata
         is_property = "/entity/P" in uri or "/prop/" in uri
         slug = label.replace(" ", "_").lower() if (label and is_property) else (label or "")
 
-        # case: COMMON_PREFIXES - prefer the fetched label
+        # Format via common prefixes, prefer the fetched label over local derivation
         for prefix, base in self._prefix_lookup:
             if uri.startswith(base):
                 local = uri[len(base):]
@@ -233,14 +260,15 @@ class Wikidata(BaseKB):
         return ""
 
 
-    def format_relation_label(self, uri: str, label: str) -> str | None:
-        return label
-
-
     # ---------------------------------------------------------------------------
-    # prediction extraction and substitution (resolve step)
+    # Mention extraction and substitution (resolve step)
 
     def extract_from_prediction(self, prediction: str) -> tuple[list[str], list[str]]:
+        """
+        Returns the sets of entity and predicate mentions as a tuple. Searches starting from
+        defined anchor points and incrementally walks along the found mention. The actual
+        stop conditions are defined in the helper functions.
+        """
         entities = []
         for m in _ENTITY_ANCHOR_RE.finditer(prediction):
             label = _consume_entity_label(prediction, m.end())
@@ -264,8 +292,9 @@ class Wikidata(BaseKB):
         expand_uris: bool = True,
     ) -> str:
         """
-        Replace wd:Label -> QID, and {prefix}:Label -> PID for every
+        Replaces wd:Label -> QID, and {prefix}:label -> PID for every
         occurrence of that label under any PREDICATE_PREFIXES prefix.
+        Lastly expands all remaining {prefix}:{local} to full IRIs.
         """
         for label, qid in entity_map.items():
             replacement = f"<{_WD_NS}{qid}>"
@@ -281,7 +310,7 @@ class Wikidata(BaseKB):
                 prediction = prediction.replace(token, replacement)
 
         if expand_uris:
-            # Expand any remaining prefix:local tokens (rdf:, rdfs:, xsd:, wikibase:, ...).
+            # Expand any remaining prefix:local tokens (like 'rdf:..' or 'rdfs:..')
             skip = {"wd", *self.PREDICATE_PREFIXES}
             for prefix, base_uri in self.COMMON_PREFIXES.items():
                 if prefix in skip:

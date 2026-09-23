@@ -2,31 +2,37 @@ import re
 
 from src.kb.base import BaseKB
 
-
+# Full Freebase IRI base
 _FB_NS = "http://rdf.freebase.com/ns/"
 
-# MID  : m.0f8l9c  /  g.119pgc8
+# MID REGEX: m.0f8l9c  /  g.119pgc8 / ...
 _MID_RE = re.compile(r"^http://rdf\.freebase\.com/ns/([mg]\.[0-9a-z_]+)$")
 
-# Relation: domain.type.property (>=3 dot-segments, excludes MIDs)
+# Relation: domain.type.property (minimum of 3 segments; excludes MIDs)
 _REL_RE = re.compile(
     r"^http://rdf\.freebase\.com/ns/"
     r"(?!(?:m|g)\.)"
     r"([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){2,})$"
 )
 
+# Entity pattern in training format
 _Q_IN_SEXPR = re.compile(r"<(http://rdf\.freebase\.com/ns/[mg]\.[0-9a-z_]+)>")
+
+# Relation pattern in training format
 _P_IN_SEXPR = re.compile(
     r"<(http://rdf\.freebase\.com/ns/"
     r"(?!(?:m|g)\.)"
     r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){2,})>"
 )
 
+# REGEX to capture entity and predicate mentions from prediction beams
 _PREFIX_RE = re.compile(r"\bfb(p)?:\s*")
 
 
 class Freebase(BaseKB):
 
+    # Prefixes used by this module. 'fb' and 'fbp' are used 
+    # similar to 'wd' and 'wdt' to distinguish entities from predicates.
     KB_PREFIXES = {
         "fb":  _FB_NS,
         "fbp": _FB_NS,
@@ -54,16 +60,15 @@ class Freebase(BaseKB):
     ANSWER_URI_PATTERNS = [_MID_RE, _REL_RE]
 
     # ---------------------------------------------------------------------------
-    # label insertion
+    # Label insertion
 
     def normalize(self, uri: str) -> str | None:
         """
-        Entity MIDs already carry their label (type.object.name), so they are
-        returned as-is.
+        Entity MIDs already carry their label (type.object.name).
 
-        Relation URIs have no label triple in Freebase; returning None to skip the
-        SPARQL batch in insert_labels.py. format_label() then derives the displayed
-        label from the URI local name.
+        Relation URIs have no label triple in Freebase. Return None to skip the
+        SPARQL batch in insert_labels.py. format_label() derives the label from 
+        the IRI itself.
         """
         if _MID_RE.match(uri):
             return uri
@@ -71,8 +76,12 @@ class Freebase(BaseKB):
 
 
     def parse_label_results(self, bindings: list[dict]) -> dict[str, str]:
-        preferred: dict[str, str] = {}   # uri -> en label
-        fallback: dict[str, str] = {}    # uri -> first non-en label
+        """
+        Prefers english labels. If no english label is found, use the first
+        other label instead.
+        """
+        preferred: dict[str, str] = {}   # IRI -> en label
+        fallback: dict[str, str] = {}    # IRI -> first non-en label
 
         for row in bindings:
             uri = row.get("uri", {}).get("value", "")
@@ -90,6 +99,8 @@ class Freebase(BaseKB):
 
     def format_label(self, uri: str, label: str) -> str:
         """
+        Formats label-enriched training data in the following schema:
+        
         Entity MID  -> fb:Human_Readable_Label
         Relation    -> fbp:domain.type.property
         """
@@ -111,10 +122,14 @@ class Freebase(BaseKB):
         return None
 
     # ---------------------------------------------------------------------------
-    # prediction extraction and substitution (resolve step)
+    # Mention extraction and substitution (resolve step)
 
     @staticmethod
     def _scan_token(s: str, start: int) -> str:
+        """
+        Scan a mention while tolerating balanced parentheses, as they can appear in labels.
+        Scanning stops at whitespace, semicolon or unmatched closing parenthesis.
+        """
         depth = 0
         i = start
         n = len(s)
@@ -131,12 +146,17 @@ class Freebase(BaseKB):
                     depth -= 1
                     i += 1
                     continue
-                break  # unbalanced close
+                # Unbalanced close
+                break
             i += 1
         return s[start:i]
 
 
     def extract_from_prediction(self, prediction: str) -> tuple[list[str], list[str]]:
+        """
+        Returns the sets of entity and predicate mentions as a tuple. Searches starting from
+        'fb:' and 'fbp:' until whitespace, semicolon or unbalanced parenthesis appears.
+        """
         entities, predicates = [], []
         for m in _PREFIX_RE.finditer(prediction):
             is_pred = m.group(1) is not None
@@ -156,8 +176,8 @@ class Freebase(BaseKB):
         expand_uris: bool = True,
     ) -> str:
         """
-        Replace fb:Label -> MID and fbp:path -> relation path, then
-        expand all remaining prefix:local tokens to full URIs.
+        Replaces fb:Label -> MID and fbp:path -> relation path, then
+        expands all remaining {prefix}:{local} tokens to full IRIs.
         """
         for label, mid in entity_map.items():
             replacement = f"<{_FB_NS}{mid}>"
@@ -168,7 +188,7 @@ class Freebase(BaseKB):
             prediction = prediction.replace(f"fbp:{label}", replacement)
 
         if expand_uris:
-            # Expand any remaining prefix:local tokens (rdf:, rdfs:, xsd:, ...)
+            # Expand any remaining prefix:local tokens (like 'rdf:..' or 'rdfs:..')
             # fb/fbp were already handled above
             for prefix, base_uri in self.COMMON_PREFIXES.items():
                 if prefix in ("fb", "fbp"):
