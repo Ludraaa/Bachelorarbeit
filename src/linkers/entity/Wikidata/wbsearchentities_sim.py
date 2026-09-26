@@ -99,15 +99,15 @@ class Linker(BaseEntityLinker):
 
         score = 0.0
 
-        # exact match (strong but not deterministic)
+        # Exact match (strong but not deterministic)
         if m == label:
             score += 0.25
 
-        # substring match
+        # Substring match
         elif m in label or label in m:
             score += 0.12
 
-        # alias match
+        # Alias match
         elif re.sub(r"\s+", "", m) == re.sub(r"\s+", "", label):
             score += 0.15
 
@@ -157,7 +157,7 @@ class Linker(BaseEntityLinker):
             candidates, semantic_scores, lexical_scores, rank_scores
         ):
 
-            # hybrid scoring
+            # Hybrid scoring
             score = (
                 (self.semantic_weight * sem_s)
                 + (self.lexical_weight * lex_s)

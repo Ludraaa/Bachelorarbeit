@@ -46,35 +46,6 @@ class Linker(BasePredicateLinker):
     Wikidata predicate linker replicating the ChatKBQA 2-hop neighbourhood
     expansion fallback (try_relation in the original codebase), ported
     from the Freebase neighborhood linker.
-
-    Two things differ from the Freebase version, both structural rather
-    than cosmetic:
-
-    1. Relation identity. Freebase relations (domain.type.property) are
-       both the identifier AND rough natural-language text, so the
-       Freebase version scores raw relation-URI local names directly
-       against the extracted question labels. Wikidata PIDs (P17, P31,
-       ...) carry no lexical content -- scoring "P17" against "country"
-       would be meaningless. So candidate PIDs are additionally resolved
-       to their rdfs:label (fetched from the wd:Pxxx entity URI, per
-       Wikidata.normalize() in src/kb/wikidata.py -- the label does NOT
-       live on the wdt:Pxxx direct-claim URI used to traverse the graph)
-       before scoring, and results are mapped back to the PID afterwards.
-
-    2. Self-candidate seeding. The Freebase version additionally seeds the
-       candidate pool with the raw extracted labels themselves (in case
-       the model already predicted the correct dot-path relation
-       verbatim, so it's not lost when 2-hop expansion misses it). That
-       relies on Freebase relation names already being valid, meaningful
-       identifiers on their own. Wikidata's extracted labels are free-text
-       property guesses, not PIDs -- seeding them into the pool would let
-       raw English text end up in predicate_map, which substitute()
-       expects to contain a real PID. This step is dropped rather than
-       ported.
-
-    QLever/the target SPARQL endpoint performs only cheap structural
-    filters; the original string-based predicate filters are applied
-    locally in Python after retrieval, same as the Freebase version.
     """
 
     def __init__(
@@ -136,15 +107,7 @@ class Linker(BasePredicateLinker):
     @staticmethod
     def _valid_relation(uri: str) -> bool:
         """
-        Wikidata analogue of the Freebase string filters. Freebase's
-        domain.type.property relations are inherently "clean" once you
-        exclude a handful of noisy namespaces (wikipedia, _id, kg.,
-        dataworld.); the equivalent clean, single-hop, scoreable relation
-        on Wikidata is any direct-claim predicate (wdt:Pxxx). wdt:P31
-        ("instance of") is additionally dropped, mirroring how the
-        Freebase filter excludes type.object.type/instance -- both are
-        structural typing edges rather than content relations worth
-        scoring against a question.
+        Wikidata analogue of the Freebase string filters. 
         """
         if not uri.startswith(_WDT_NS):
             return False
@@ -155,7 +118,7 @@ class Linker(BasePredicateLinker):
     @classmethod
     def _valid_relation_pair(cls, r0_uri: str, r1_uri: str) -> bool:
         """
-        pair is valid iff both predicates pass the local filter
+        Pair is valid iff both predicates pass the local filter.
         """
         return (
             cls._valid_relation(r0_uri)
@@ -164,13 +127,6 @@ class Linker(BasePredicateLinker):
 
     # ------------------------------------------------------------------
     # Query builders
-    #
-    # Same four 2-hop shapes as the Freebase version, unchanged structurally
-    # -- only the prefix/entity-var namespace differs. wdt:P31 is excluded
-    # at the SPARQL level too (in addition to the Python-side
-    # _valid_relation_pair filter) purely to keep result sets smaller,
-    # matching how the Freebase version excludes ns:type.object.type in
-    # the query itself.
 
     def _q1(self, ent: str) -> str:
         """
@@ -365,9 +321,7 @@ LIMIT {self.limit}"""
     ) -> tuple[set[str], dict]:
         """
         Union of all relation local names (PIDs) reachable within 2 hops
-        from entity_id (a bare QID, e.g. "Q76"), collected via 4 separate
-        queries. Returns (relations, fetch_debug). Results are cached by
-        entity QID.
+        from entity_id, collected via 4 separate queries.
         """
 
         self._stats["total_fetches"] += 1
@@ -455,17 +409,9 @@ LIMIT {self.limit}"""
         return cumulative, fetch_debug
 
     # ------------------------------------------------------------------
-    # PID -> label lookup (the step the Freebase version doesn't need)
+    # PID -> label lookup (not needed for freebase)
 
     def _fetch_relation_labels(self, pids: set[str]) -> dict[str, str]:
-        """
-        rdfs:label for a property lives on its wd:Pxxx entity URI, not on
-        the wdt:Pxxx direct-claim URI used to traverse the graph -- see
-        Wikidata.normalize() in src/kb/wikidata.py for the same mapping.
-        Falls back to the bare PID string (so scoring still runs, just
-        with no semantic signal) if no English label is found or the
-        request fails.
-        """
         pids = set(pids)
         uncached = [p for p in pids if p not in self._label_cache]
 
@@ -519,13 +465,6 @@ LIMIT {self.limit}"""
         cand_ids: list[str],
         cand_texts: list[str],
     ) -> dict[str, list[tuple[str, float]]]:
-        """
-        Same cosine-similarity top-k/threshold logic as the Freebase
-        version, except candidates are embedded on their fetched label
-        text (cand_texts) while the returned tuples reference the
-        underlying PID (cand_ids) -- substitute() downstream needs the
-        PID, not the label text.
-        """
 
         if not labels or not cand_ids:
             return {
@@ -638,7 +577,7 @@ LIMIT {self.limit}"""
             )
 
         # --------------------------------------------------------------
-        # Label lookup for the candidate pool (Wikidata-only step)
+        # Label lookup for the candidate pool
 
         label_lookup = self._fetch_relation_labels(set(cand_ids))
         cand_texts = [label_lookup[pid] for pid in cand_ids]

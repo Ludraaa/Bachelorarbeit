@@ -10,7 +10,7 @@ from src.utils.kb import load_kb_module
 from src.utils.run_config import apply_run_config_defaults, require
 
 
-ENDPOINT_URL = os.getenv("ENDPOINT_URL", "https://query.wikidata.org/sparql")
+ENDPOINT_URL = os.getenv("ENDPOINT_URL")
 BATCH_SIZE = 50
 
 SPLITS = ("dev", "test", "train")
@@ -125,7 +125,7 @@ def print_failure_report():
 
 
 # ---------------------------------------------------------------------------
-# endpoint resolution
+# Endpoint resolution
 
 
 def resolve_endpoint(kb) -> str:
@@ -392,6 +392,12 @@ def action_merge_all(
     paths: dict,
     types_cache: dict[str, bool] | None = None,
 ) -> dict[str, str]:
+    """
+    Transforms a single input split file into the label-enriched version.
+    Queries and substitutes labels into the training format, records the transformations
+    into gold entity and predicate maps. Also checks type membership for every entity
+    and writes to both the items gold type map, as well as the global type map accordingly.
+    """
 
     # Determines whether the provided KB module uses type map at all
     has_types = (
@@ -543,6 +549,12 @@ def main():
     require(args, "dataset", "kb")
 
     _debug = args.debug
+    
+    if not ENDPOINT_URL:
+        raise ValueError((
+            "$(ENDPOINT_URL) is not set. Run using the Makefile "
+            "to automatically set it to the run config's value."
+            ))
 
     debug(f"ENDPOINT_URL (default) = {ENDPOINT_URL}")
     debug(f"BATCH_SIZE = {BATCH_SIZE}")
@@ -604,8 +616,7 @@ def main():
 
         # Only write type map for train split
         if has_types and split == "train":
-            type_map_path = (
-                data_dir / args.dataset / "generation" / "label_maps" / f"{args.dataset}_{split}_type_label_map.json")
+            type_map_path = (data_dir / args.dataset / "generation" / "label_maps" / f"{args.dataset}_{split}_type_label_map.json")
             type_map_path.parent.mkdir(parents=True, exist_ok=True)
             type_map_path.write_text(
                 json.dumps(split_type_map, indent=2, ensure_ascii=False),

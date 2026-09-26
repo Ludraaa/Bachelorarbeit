@@ -1,51 +1,41 @@
 import os
-import re
-import sys
 import json
-import time
 import argparse
-import importlib.util
 import statistics
 from datetime import datetime, timezone
 from pathlib import Path
 from tqdm import tqdm
-
 import torch
 import yaml
 from llamafactory.chat import ChatModel
 
-from src.utils.kb import load_kb_module
 from src.utils.run_config import apply_run_config_defaults, require, validate_choice
 
 
 # ---------------------------------------------------------------------------
-# Args
+# Arg handling
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, default=None,
-                        help="LlamaFactory inference yaml")
-    parser.add_argument("--dataset", type=str, default=None)
+    parser.add_argument("--config", type=str, help="LlamaFactory inference yaml")
+    parser.add_argument("--dataset", type=str)
     parser.add_argument("--split", type=str, default="test")
-    parser.add_argument("--mode", type=str, default="sparql",
-                        choices=["jena", "sparql"])
-    parser.add_argument("--kb", type=str, default="freebase",
-                        help="KB module name under src/kb/")
-    parser.add_argument("--num_beams", type=int, default=5)
+    parser.add_argument("--mode", type=str, default="sparql")
+    parser.add_argument("--num_beams", type=int, default=8)
     parser.add_argument("--max_new_tokens", type=int, default=512)
-    parser.add_argument("--max_samples", type=int, default=None)
+    parser.add_argument("--max_samples", type=int)
     parser.add_argument("--diversity_penalty", type=float, default=0.5,
                         help="Diversity penalty for group beam search. "
                              "Higher values = more diverse but potentially less coherent outputs. "
                              "Recommended: ~1.0 for Llama, ~0.5 for Qwen")
-    parser.add_argument("--run_config", type=str, default=None)
+    parser.add_argument("--run_config", type=str)
     parser.add_argument("--oracle", action="store_true",
                         help="Skip inference and directly output the ground truth (sexpr_with_labels) as the single prediction.")
 
     apply_run_config_defaults(parser, section="generate", config_ref_key="infer_config")
 
     args = parser.parse_args()
-    require(args, "config", "dataset", "run_config")
+    require(args, "config", "dataset",)
     validate_choice(args, "mode", ["jena", "sparql"])
     return args
 
@@ -54,14 +44,14 @@ def parse_args():
 # Dataset
 
 def load_dataset(dataset, split, mode, data_dir):
-    path = os.path.join(
-        data_dir, dataset, "generation", "merged",
-        f"{dataset}_{split}.{mode}.json"
-    )
-    print(f"Loading dataset: {path}")
+    """
+    Loads the specified label-enriched split file to use for predictions.
+    """
+    path = os.path.join(data_dir, dataset, "generation", "merged", f"{dataset}_{split}.{mode}.json")
+    print(f"[INFO] Loading dataset: {path}")
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
-    print(f"  {len(data)} examples")
+    print(f"[INFO]   {len(data)} examples")
     return data
 
 
@@ -72,7 +62,11 @@ INSTRUCTION = (
     "Generate a Logical Form query that retrieves the information corresponding to the given question."
 )
 
+
 def build_question(raw_question: str) -> str:
+    """
+    Formats the question exactly like in the training data.
+    """
     return f"{INSTRUCTION}\n\nQuestion: {{ {raw_question} }}"
 
 
@@ -83,6 +77,10 @@ def generate_beams(
     max_new_tokens: int,
     diversity_penalty: float
 ) -> list[str]:
+    """
+    Generate requested number of prediction beams using group beam search.
+    Duplicate beams are removed from the prediction list at the end.
+    """
 
     tok = engine.tokenizer
 
@@ -142,7 +140,10 @@ def generate_beams(
 # Run identity
 
 def _run_manifest_dict(args) -> dict:
-    """Parameters that determine the content of a generation run."""
+    """
+    Defines dict of parameters that determine the content of a generation run.
+    This is used for continuation logic if an existing run was interrupted.
+    """
     return {
         "dataset": args.dataset,
         "split": args.split,
@@ -156,14 +157,21 @@ def _run_manifest_dict(args) -> dict:
 
 
 def _check_or_write_manifest(run_dir: str, manifest: dict) -> None:
+    """
+    Looks for an existing run manifest in the output folder.
+    If no manifets exists, write the current run's manifest to disk.
+    If one does exist, do nothing unless it is different from the 
+    current run's manifest.
+    """
     path = os.path.join(run_dir, "run_manifest.json")
     if os.path.exists(path):
         existing = json.loads(Path(path).read_text(encoding="utf-8"))
         
-        # Handle graceful resume for older manifests missing the oracle key
+        # Handle resume for older manifests missing the oracle key
         if "oracle" not in existing:
             existing["oracle"] = False
-            
+        
+        # Relevant config parameter is different
         if existing != manifest:
             raise ValueError(
                 f"Run folder already exists with different parameters: {run_dir}\n"
@@ -172,16 +180,20 @@ def _check_or_write_manifest(run_dir: str, manifest: dict) -> None:
                 f"Use a different run_config (or delete the folder to start over)."
             )
     else:
+        # Write current run manifest
         os.makedirs(run_dir, exist_ok=True)
         Path(path).write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-# ---------------------------------------------------------------------------
-# Fresh-start helper
-
 def _reset_if_already_finished(out_path: str, ckpt_path: str) -> None:
+    """
+    If an existing run is found and continue logic would be triggered,
+    check whether that run is already finished or if it actually needs
+    continuation. If it is done, assume the user wants to run the script
+    again (instead of having to delete the produced file manually).
+    """
     if os.path.exists(out_path):
-        print(f"Final output already exists ({out_path}) — starting fresh.")
+        print(f"[INFO] Final output already exists ({out_path}). Starting fresh.")
         os.remove(out_path)
         if os.path.exists(ckpt_path):
             os.remove(ckpt_path)
@@ -234,10 +246,12 @@ def _build_meta(
 
 
 # ---------------------------------------------------------------------------
-# Per-item statistics helpers
+# Statistics helpers
 
 def _gold_rank(predictions: list[str], gold: str) -> int | None:
-    """Return the rank (0-indexed) of the gold sexpr in predictions, or None."""
+    """
+    Return the rank of the gold sexpr in the predictions list, or None.
+    """
     gold_lower = gold.strip().lower()
     for rank, p in enumerate(predictions):
         if p.strip().lower() == gold_lower:
@@ -246,9 +260,13 @@ def _gold_rank(predictions: list[str], gold: str) -> int | None:
 
 
 # ---------------------------------------------------------------------------
-# Checkpoint (incremental JSONL) helpers
+# Incremental write helpers
 
 def load_checkpoint(jsonl_path: str) -> dict[int, dict]:
+    """
+    Loads the specified jsonl checkpoint of the current run. The script will
+    continue processing from where the checkpoint left off.
+    """
     done = {}
     if not os.path.isfile(jsonl_path):
         return done
@@ -266,6 +284,9 @@ def load_checkpoint(jsonl_path: str) -> dict[int, dict]:
 
 
 def append_checkpoint(jsonl_path: str, idx: int, item: dict) -> None:
+    """
+    Appends a new item to the incremental jsonl file.
+    """
     with open(jsonl_path, "a", encoding="utf-8") as f:
         f.write(json.dumps({"idx": idx, "item": item}, ensure_ascii=False) + "\n")
         f.flush()
@@ -273,13 +294,15 @@ def append_checkpoint(jsonl_path: str, idx: int, item: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
-# build infer config
+# Build infer config
 
 def build_chat_config(infer_config_path: str, training_config_path: str | None) -> dict:
-    """Infer-only settings (infer_dtype, trust_remote_code, ...) layered on
+    """
+    Layers inference-specific settings (infer_dtype, trust_remote_code, ...) on
     top of the training config's model identity, so model_name_or_path /
-    adapter path / template are declared exactly once, in the training
-    config."""
+    adapter path / template do not need to be declared twice, once in training
+    config and once in inference config.
+    """
     with open(infer_config_path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
 
@@ -308,17 +331,14 @@ def main():
 
     cfg = build_chat_config(args.config, run_cfg.get("training_config"))
 
-    # Load KB module
-    kb_instance = load_kb_module(args.kb)
-
-    # Always determine the actual model_id so the directory path is identical to inference runs
+    # Determine the model_id
     model_id = Path(cfg.get("adapter_name_or_path") or cfg["model_name_or_path"]).name
 
     if args.oracle:
-        print("Oracle mode enabled. Skipping model initialization.")
+        print("[INFO] Oracle mode enabled. Skipping model initialization.")
         engine = None
     else:
-        print("Initialising ChatModel...")
+        print("[INFO] Initializing ChatModel...")
         chat_model = ChatModel(cfg)
         engine = chat_model.engine
 
@@ -326,11 +346,11 @@ def main():
     data = load_dataset(args.dataset, args.split, args.mode, data_dir)
     if args.max_samples:
         data = data[:args.max_samples]
-        print(f"Capped to {len(data)} examples")
+        print(f"[WARN] Capped to {len(data)} examples")
 
-    # e.g. configs/runs/Wikidata/Qald7/grisp.yaml -> "grisp"
+    # Output path logic
+    # configs/runs/Wikidata/Qald7/sparql.yaml -> "sparql"
     run_stem = Path(args.run_config).stem
-
     run_name = f"{args.dataset}_{args.split}.{args.mode}"
     out_dir  = os.path.join(data_dir, args.dataset, "predictions", model_id, run_stem, "raw")
     os.makedirs(out_dir, exist_ok=True)
@@ -341,25 +361,27 @@ def main():
 
     _check_or_write_manifest(out_dir, _run_manifest_dict(args))
 
-    print(f"Output:     {out_path}")
-    print(f"Checkpoint: {ckpt_path}")
+    print(f"[INFO] Output:     {out_path}")
+    print(f"[INFO] Checkpoint: {ckpt_path}")
 
-    # ------------------------------------------------------------------
     # Resume from checkpoint, if present
     done = load_checkpoint(ckpt_path)
     if done:
-        print(f"Resuming: {len(done)}/{len(data)} items already completed in checkpoint.")
+        print(f"[INFO] Resuming: {len(done)}/{len(data)} items already completed in checkpoint.")
 
-    # Per-item accumulators for metadata
+    # Accumulator
     results: list[dict | None] = [None] * len(data)
 
     for idx, item in enumerate(tqdm(data)):
+        # Load processed items
         if idx in done:
             results[idx] = done[idx]
             continue
 
+        # Oracle flag handling, no actual inference required
         if args.oracle:
             preds = [item.get("sexpr_with_labels") or item.get("sexpr", "")]
+        # Beam generation
         else:
             messages = [{"role": "user", "content": build_question(item["question"])}]
             preds = generate_beams(
@@ -367,13 +389,14 @@ def main():
                 args.diversity_penalty
             )
 
+        # Incremental write
         record = {**item, "predict": preds}
         results[idx] = record
         append_checkpoint(ckpt_path, idx, record)
 
     # ------------------------------------------------------------------
-    # Recompute stats over the full (resumed + fresh) result set
-    beam_counts:   list[int]  = []
+    # Compute stats over the full result set
+    beam_counts: list[int]  = []
     gold_in_beams: list[bool] = []
     gold_at_rank0: list[bool] = []
 
@@ -388,29 +411,27 @@ def main():
         gold_at_rank0.append(rank == 0)
 
     num_items = len(results)
-    meta = _build_meta(
-        args, model_id, num_items,
-        beam_counts, gold_in_beams, gold_at_rank0,
-    )
+    meta = _build_meta(args, model_id, num_items, beam_counts, gold_in_beams, gold_at_rank0)
 
     output = {"meta": meta, "items": results}
 
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(output, f, indent=2, ensure_ascii=False)
 
-    print(f"\n{'='*55}")
+    # Print run statistics
+    print(f"\n{'-'*55}")
     print(f"  Dataset:              {args.dataset} / {args.split} / {args.mode}")
     print(f"  Model:                {model_id}")
     if args.oracle:
-        print("  Mode:                 Oracle (Ground Truth)")
+        print(f"  Mode:                 Oracle (Ground Truth)")
     print(f"  Items:                {num_items}")
     print(f"  Diversity penalty:    {args.diversity_penalty}")
     print(f"  Gold @ rank 0:        {meta['gold_at_rank0_count']}  ({meta['gold_at_rank0_pct']}%)")
     print(f"  Gold in beams:        {meta['gold_in_beams_count']}  ({meta['gold_in_beams_pct']}%)")
     print(f"  Mean beams:           {meta['mean_beams_per_item']}")
     print(f"  Median beams:         {meta['median_beams_per_item']}")
-    print(f"{'='*55}")
-    print(f"  Saved to: {out_path}\n")
+
+    print(f"\n[INFO] Saved to: {out_path}\n")
 
 
 if __name__ == "__main__":

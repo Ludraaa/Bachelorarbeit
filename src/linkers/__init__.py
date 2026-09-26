@@ -73,33 +73,3 @@ def load_predicate_linker(name: str, **overrides) -> BasePredicateLinker:
         )
 
     return linker
-
-
-def load_extractor(kb: str):
-    """
-    Returns the extract_from_prediction bound method for the given KB.
-    """
-    instance = load_kb_module(kb)
-
-    if not hasattr(instance, "extract_from_prediction"):
-        raise AttributeError(
-            f"src/kb/{kb}.py's {type(instance).__name__} must implement "
-            f"extract_from_prediction(prediction: str)"
-        )
-
-    return instance.extract_from_prediction
-
-
-def load_substitute(kb: str):
-    """
-    Returns the substitute bound method for the given KB.
-    """
-    instance = load_kb_module(kb)
-
-    if not hasattr(instance, "substitute"):
-        raise AttributeError(
-            f"src/kb/{kb}.py's {type(instance).__name__} must implement "
-            f"substitute(prediction, entity_map, predicate_map)"
-        )
-
-    return instance.substitute

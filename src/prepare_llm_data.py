@@ -26,10 +26,13 @@ def _parse_args():
 # File handling
 
 def load_data(split, args):
+    """
+    Loads the target dataset's label-enriched train split files for every training target.
+    """
     data_dir = os.getenv("DATA_DIR", "data")
     base = Path(f"{data_dir}/{args.dataset}/generation/merged")
+    # Search for any training target files
     pattern = f"{args.dataset}_{split}.*.json"
-
     files = list(base.glob(pattern))
     if not files:
         raise FileNotFoundError(f"No files found for pattern: {pattern}")
@@ -37,11 +40,11 @@ def load_data(split, args):
     data_by_mode = {}
 
     for f in files:
-        name = f.stem  # dataset_split.method
+        name = f.stem  # dataset_split.mode
         parts = name.split(".")
         mode = parts[-1]
 
-        print("Loading:", f)
+        print("[INFO] Loading:", f)
         with open(f, encoding="utf-8") as fh:
             data_by_mode[mode] = json.load(fh)
 
@@ -51,31 +54,23 @@ def load_data(split, args):
 # Process
 
 def prepare_dataloader(args, split):
+    """
+    For a given label-enriched split file, generate a Llamafactory training dataset.
+    """
     data_by_mode = load_data(split, args)
 
     for mode, data in data_by_mode.items():
 
-        print(f"\n=== Mode: {mode} ===")
-        print(f'Origin {split} dataset len: {len(data)}')
-        assert type(data) == list
-
-        if 'sexpr_with_labels' not in data[0]:
-            raise KeyError(
-                "'sexpr_with_labels' field missing — has insert_labels.py been run on this dataset?"
-            )
-
-        if 'train' in split or 'dev' in split:
-            examples = [x for x in data if x['sexpr'].lower() != 'null']
-        else:
-            examples = list(data)
+        print(f"\n[INFO] === Mode: {mode} ===")
+        print(f'[INFO] Input {split} split len: {len(data)}')
 
         # Filter empty outputs
         before = len(examples)
-        examples = [x for x in examples if x.get('sexpr_with_labels', '').strip()]
-        print(f'Dropped {before - len(examples)} entries with empty sexpr_with_labels')
-        
-        print(f'Real {split} dataset len: {len(examples)}')
+        examples = [x for x in data if x.get('sexpr_with_labels', '').strip()]
+        print(f'[WARN] Dropped {before - len(examples)} entries with empty sexpr_with_labels')
+        print(f'[INFO] Real {split} dataset len: {len(examples)}')
 
+        # Construct dataset format expected by Llamafactory
         instruction = 'Generate a Logical Form query that retrieves the information corresponding to the given question. \n'
         json_data = []
         for item in tqdm(examples):
@@ -86,6 +81,7 @@ def prepare_dataloader(args, split):
                 "history": [],
             })
 
+        # Save dataset to disk
         llm_dir = os.getenv("LLM_DIR", "LLMs")
         output_dir = f'{llm_dir}/data/{args.dataset}_{split}.{mode}/examples.json'
         os.makedirs(os.path.dirname(output_dir), exist_ok=True)
@@ -93,6 +89,7 @@ def prepare_dataloader(args, split):
             json.dump(json_data, f, ensure_ascii=False)
         print(f'Written {len(json_data)} examples to {output_dir}')
 
+        # Register the dataset so Llamafactory can use it
         register_dataset(args.dataset, f"train.{mode}")
 
 
@@ -100,9 +97,15 @@ LLM_DIR = os.getenv("LLM_DIR", "LLMs")
 DATASET_INFO_PATH = f'{LLM_DIR}/data/dataset_info.json'
 
 def register_dataset(dataset: str, split: str) -> None:
+    """
+    Appends an entry to Llamafactory's dataset_info.json.
+    This specifies the format and path, so it can be used in Llamafactory training configs
+    by simply entering its name only.
+    """
+    # Construct entry
     key = f'{dataset}_{split}'
     entry = {
-        "file_name": f'{dataset}_{split}/examples.json',  # {LLM_DIR}/data/...
+        "file_name": f'{dataset}_{split}/examples.json',
         "formatting": "alpaca",
         "columns": {
             "prompt": "instruction",
@@ -118,11 +121,12 @@ def register_dataset(dataset: str, split: str) -> None:
     else:
         info = {}
 
+    # Already registered
     if info.get(key) == entry:
-        return  # already registered
+        return
 
+    # Append entry
     info[key] = entry
-
     with open(DATASET_INFO_PATH, 'w', encoding='utf-8') as f:
         json.dump(info, f, indent=2, ensure_ascii=False)
     print(f'Registered "{key}" in {DATASET_INFO_PATH}')
@@ -130,6 +134,4 @@ def register_dataset(dataset: str, split: str) -> None:
 
 if __name__ == '__main__':
     args = _parse_args()
-    print(args)
     prepare_dataloader(args, "train")
-    print('Finished')

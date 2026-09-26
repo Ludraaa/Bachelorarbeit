@@ -1,47 +1,41 @@
 import os
-import sys
 import json
 import argparse
-import importlib.util
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
-
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 from tqdm import tqdm
-
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
 from src.utils.sparql_exec import (
-    init_uri_normaliser,
-    normalise_gold_sparql,
+    normalize_gold_sparql,
     execute_sparql,
     bindings_to_rows,
     ensure_rows,
 )
-
 from src.utils.kb import load_kb_module
 from src.utils.run_config import apply_run_config_defaults, require, validate_choice
 
-_DEFAULT_ENDPOINT = os.environ.get("ENDPOINT_URL", "https://query.wikidata.org/sparql")
+_DEFAULT_ENDPOINT = os.environ.get("ENDPOINT_URL")
 _DATA_DIR = os.environ.get("DATA_DIR", "data")
 _DEFAULT_LEDGER = "results/results.json"
 
 _MODES = ("chatkbqa_webqsp", "chatkbqa_cwq", "jena", "sparql")
 
-# F1 budgets for the hyperparameter-sensitivity analysis
+# F1 budgets for the hyperparameter sensitivity analysis
 _F1_BUDGETS = {
     "0.01pct": 0.0001,
     "0.1pct":  0.001,
     "1pct":    0.01,
 }
 
-# Caps (beam_limit, k1, k2) are never allowed to drop below this
+# beam limit, k1, k2 are never allowed to drop below this
 _MIN_CAP = 1
 
 plt.rcParams.update({
@@ -57,45 +51,36 @@ plt.rcParams.update({
 
 
 # --------------------------------------------
-# args
+# Arg handling
 
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Evaluate resolved KBQA predictions and record results."
     )
 
-    parser.add_argument("--dataset", default=None, help="Dataset name.")
-    parser.add_argument("--split", default=None, help="Split: dev / test (/ train).")
-    parser.add_argument("--mode", default=None, choices=list(_MODES),
+    parser.add_argument("--dataset", help="Dataset name.")
+    parser.add_argument("--split", help="Split: dev / test (/ train).")
+    parser.add_argument("--mode", choices=list(_MODES),
                         help="Conversion mode used during resolution.")
-    parser.add_argument("--model_id", default=None, help="Model identifier.")
-    parser.add_argument("--entity_linkers", default=None,
-                        help="Comma-seperated list of entity linkers used.")
-    parser.add_argument("--predicate_linkers", default=None,
-                        help="Comma-seperated list of predicate linkers used.")
-
+    parser.add_argument("--model_id", help="Model identifier.")
+    parser.add_argument("--entity_linkers", help="Comma-seperated list of entity linkers used.")
+    parser.add_argument("--predicate_linkers", help="Comma-seperated list of predicate linkers used.")
     parser.add_argument("--endpoint_url", default=_DEFAULT_ENDPOINT,
                         help="SPARQL endpoint URL for execution.")
     parser.add_argument("--timeout", type=int, default=60,
                         help="Per-query HTTP timeout in seconds.")
-
     parser.add_argument("--get-live-gold", action="store_true", default=False,
                         help="Execute the gold SPARQL live instead of using stored answers.")
     parser.add_argument("--live_only", action="store_true", default=False,
                         help="Ignore saved gold answers entirely and only respect live-executed gold answers.")
-
     parser.add_argument("--ledger", default=_DEFAULT_LEDGER,
                         help="Path to the central results ledger JSON.")
     parser.add_argument("--note", default="",
                         help="Free-text note stored in the ledger entry for this run.")
-
-    parser.add_argument("--max_samples", type=int, default=None,
-                        help="Cap number of items evaluated (debug).")
-
+    parser.add_argument("--max_samples", type=int, help="Cap number of items evaluated (debug).")
     parser.add_argument("--skip_analysis", action="store_true", default=False,
                         help="Skip the distribution/hyperparameter-sensitivity analysis and plots.")
-
-    parser.add_argument("--run_config", type=str, default=None)
+    parser.add_argument("--run_config", type=str)
 
     apply_run_config_defaults(parser, section="eval")
 
@@ -110,21 +95,33 @@ def parse_args():
 
 
 # --------------------------------------------
-# Path helpers
+# Path handling
 
 def resolved_path(data_dir, dataset, model_id, run_stem, split, mode):
+    """
+    Returns the path to the resolved file (output of resolve step).
+    """
     return (Path(data_dir) / dataset / "predictions" / model_id / run_stem / "resolved" / f"{dataset}_{split}.{mode}.json")
 
 
 def evaluated_path(data_dir, dataset, model_id, run_stem, split, mode):
+    """
+    Determines the output path of this script.
+    """
     return (Path(data_dir) / dataset / "predictions" / model_id / run_stem / "evaluated" / f"{dataset}_{split}.{mode}.json")
 
 
 def analysis_json_path(eval_out: Path) -> Path:
+    """
+    Determines the output path of the analysis file.
+    """
     return eval_out.with_suffix("").with_suffix(".analysis.json")
 
 
 def analysis_plots_dir(eval_out: Path) -> Path:
+    """
+    Determines the output path of the plot directory.
+    """
     return eval_out.parent / f"{eval_out.stem}_plots"
 
 
@@ -132,7 +129,7 @@ def analysis_plots_dir(eval_out: Path) -> Path:
 # Metric
 
 """
-From GRASP:
+Taken from GRASP:
 https://github.com/ad-freiburg/grasp/blob/7582dd1aeb3f70d4a952027cadada6901db41640/src/grasp/sparql/metrics.py
 """
 def assignment_f1_score(
@@ -161,19 +158,19 @@ def assignment_f1_score(
 
 def score(pred: list[list[str]], gold: list[list[str]]):
     """
-    exact_match: pred and gold contain the same set of row
-    assignment_f1: assignment F1 above
-    hit1: f1 > 0 (min. one hit)
+    Calculates the following three metrics:
+    
+    Exact Match: pred and gold contain the same set of rows
+    Assignment F1: assignment_f1_score
+    Hit1: f1 > 0
     """
-    if not gold and not pred:
-        return {"exact_match": 1, "assignment_f1": 1.0, "hit1": 1}
-
+    # Treat as wrong if either is empty.
     if not gold or not pred:
         return {"exact_match": 0, "assignment_f1": 0.0, "hit1": 0}
 
     f1 = assignment_f1_score(pred, gold)
 
-    # order should not matter for EM
+    # Order does not matter for exact match
     pred_bag = sorted(tuple(r) for r in pred)
     gold_bag = sorted(tuple(r) for r in gold)
 
@@ -195,25 +192,32 @@ def get_gold_answers(
     live_only: bool,
     common_prefixes,
 ) -> tuple[list[list[str]], str]:  # answers, note
+    """
+    Retrieves the gold answer set for a specific dataset item.
+    """
     raw_sparql = item.get("sparql", "")
+    # Legacy support for old result structure
     saved = ensure_rows(item.get("answer", []))
 
     if not get_live_gold or not raw_sparql:
         if live_only:
             return [], "empty"
+        # Retrieve gold answer as the gold answer saved on the dataset
         return saved, "saved"
 
-    normed, normed_err = normalise_gold_sparql(raw_sparql, common_prefixes)
+    normed, normed_err = normalize_gold_sparql(raw_sparql, common_prefixes)
 
     if not normed:
         if live_only:
             return [], "empty"
+        # Retrieve gold answer as dataset gold answer, because gold SPARQL normalization failed
         return (saved, "saved_fallback") if saved else ([], "empty")
 
     raw = execute_sparql(normed, endpoint, timeout)
 
     if raw is not None:
         rows = bindings_to_rows(raw)
+        # Return live gold results
         if rows:
             return rows, "live"
 
@@ -227,21 +231,31 @@ def get_gold_answers(
 # Ledger helpers
 
 def load_ledger(path: str) -> list[dict]:
+    """
+    Loads the existing ledger for evaluation results.
+    """
     p = Path(path)
     return json.loads(p.read_text(encoding="utf-8")) if p.exists() else []
 
 
 def save_ledger(ledger: list[dict], path: str) -> None:
+    """
+    Writes back the updated ledger to disk.
+    """
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(ledger, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 # --------------------------------------------
-# distribution analysis
+# Distribution analysis
 
 
 def _idx_stats(values: list[int]) -> dict:
+    """
+    Given a list of index statistics (beam limit, k1, k2 index distributions),
+    calculates min, max, mean, median and certain percentiles.
+    """
     if not values:
         return {"count": 0}
     arr = np.array(values, dtype=float)
@@ -258,8 +272,10 @@ def _idx_stats(values: list[int]) -> dict:
 
 
 def _float_stats(values: list[float]) -> dict:
-    """Same idea as _idx_stats but for continuous scores (e.g. per-item
-    assignment_f1) where int-casting min/max would be wrong."""
+    """
+    Given a list of statistics (of float type), calculates a few
+    relevant statistics like mean, median, min, max, etc..
+    """
     if not values:
         return {"count": 0}
     arr = np.array(values, dtype=float)
@@ -283,6 +299,13 @@ def _winning_pass_bucket(it: dict) -> str:
 
 
 def build_distribution_analysis(evaluated_items: list[dict], predicate_linkers: list[str]) -> dict:
+    """
+    Calculates the following distributions:
+    - Winning predicate linking pass
+    - Winning beam rank (per predicate linking pass)
+    - Winning entity permutation rank (per predicate linking pass)
+    - Winning predicate permutation rank (per predicate linking pass)
+    """
     n = len(evaluated_items)
 
     winning_pass_counter = Counter(_winning_pass_bucket(it) for it in evaluated_items)
@@ -329,7 +352,9 @@ def _exec_status_breakdown(items_for_pass: list[dict]) -> dict:
 
 def build_per_linker_performance(evaluated_items: list[dict], predicate_linkers: list[str]) -> dict:
     """
-    Executability and answer-quality broken down by which predicate-linker pass produced the winning query for each item.
+    Executability and answer quality by predicate linking pass.
+    Items are grouped by the pass that produced their winning solution.
+    Unresolved and stale items are reported separately.
     """
     n_total = len(evaluated_items)
     pass_labels = list(predicate_linkers) + ["_unresolved", "_stale"]
@@ -378,10 +403,14 @@ def build_per_linker_performance(evaluated_items: list[dict], predicate_linkers:
 
 
 # --------------------------------------------
-# hyperparameter
+# Hyperparameter
 
 
 def _grouped_losses(items_for_pass: list[dict], idx_key: str) -> dict[int, list[float]]:
+    """
+    Given all items resolved by a specific predicate linking pass long with an index key
+    (winning beam, k1, k2 rank), groups f1 scores according to what rank an item was resolved by.
+    """
     groups: dict[int, list[float]] = defaultdict(list)
     for it in items_for_pass:
         idx = it.get(idx_key)
@@ -392,6 +421,13 @@ def _grouped_losses(items_for_pass: list[dict], idx_key: str) -> dict[int, list[
 
 
 def _param_sensitivity(items_for_pass: list[dict], idx_key: str, original_cap: float, n_total: int) -> dict:
+    """
+    Starting from the original cap, progressively lower parameter values are
+    considered. Items whose winning index lies above the new cap are treated
+    as lost, and their assignment F1 scores are accumulated relative to the
+    total number of evaluated items.
+    """
+    # Group f1 scores by idx value
     groups = _grouped_losses(items_for_pass, idx_key)
     orig_cap = max(original_cap, _MIN_CAP)
 
@@ -408,6 +444,7 @@ def _param_sensitivity(items_for_pass: list[dict], idx_key: str, original_cap: f
 
     distinct_idxs_desc = sorted(groups.keys(), reverse=True)
 
+    # Calculate new index cap based on cumulative f1 loss thresholds
     results = {}
     for budget_name, budget in _F1_BUDGETS.items():
         cum_loss = 0.0
@@ -431,7 +468,9 @@ def _param_sensitivity(items_for_pass: list[dict], idx_key: str, original_cap: f
 
 
 def _full_sensitivity_curve(items_for_pass: list[dict], idx_key: str, original_cap: float, n_total: int) -> dict:
-    """Cumulative F1 loss at every distinct cap value"""
+    """
+    Calculates the cumulative F1 loss at every distinct cap value.
+    """
     groups = _grouped_losses(items_for_pass, idx_key)
     orig_cap = max(original_cap, _MIN_CAP)
 
@@ -451,6 +490,12 @@ def _full_sensitivity_curve(items_for_pass: list[dict], idx_key: str, original_c
 
 
 def _combined_effect(items_for_pass: list[dict], new_beam_cap: float, new_k1: float, new_k2: float, n_total: int) -> dict:
+    """
+    Evaluates the combined effect of reducing all three search caps.
+    An item is considered dropped if its winning beam rank, entity
+    permutation index, or predicate permutation index exceeds the
+    corresponding new cap. 
+    """ 
     new_beam_cap = max(new_beam_cap, _MIN_CAP)
     new_k1 = max(new_k1, _MIN_CAP)
     new_k2 = max(new_k2, _MIN_CAP)
@@ -467,6 +512,9 @@ def _combined_effect(items_for_pass: list[dict], new_beam_cap: float, new_k1: fl
 
 
 def build_hyperparam_analysis(evaluated_items: list[dict], file_meta: dict, n_total: int) -> dict:
+    """
+    Builds sensitivity analyses for the beam, entity, and predicate search caps.
+    """
     predicate_linkers = file_meta.get("predicate_linkers") or []
     beam_limits = file_meta.get("beam_limits") or []
     k1_list = file_meta.get("k1_per_pass") or []
@@ -541,16 +589,19 @@ def build_hyperparam_analysis(evaluated_items: list[dict], file_meta: dict, n_to
 
 
 # --------------------------------------------
-# plots
+# Plots
 
 def _display_label(lid: str) -> str:
+    """
+    Converts internal pass identifiers to display labels.
+    """
     if lid == "_stale":
         return "Stale"
     if lid == "_unresolved":
         return "Unresolved"
     return lid
 
-
+# Display labels for internal budget threshold names
 _BUDGET_DISPLAY = {
     "0.01pct": "0.01%",
     "0.1pct":  "0.1%",
@@ -559,6 +610,9 @@ _BUDGET_DISPLAY = {
 
 
 def _hist_ax(ax, values: list[int], title: str, xlabel: str):
+    """
+    Draws a distribution of int search indices.
+    """
     if not values:
         ax.set_title(f"{title} (no data)")
         ax.axis("off")
@@ -593,9 +647,9 @@ def _hist_ax(ax, values: list[int], title: str, xlabel: str):
 
 def _plot_sensitivity_param(ax, curve: dict, sens: dict, pname: str) -> None:
     """
-    Draw one panel of the beam/k1/k2 sensitivity plot: the cumulative F1-loss
-    curve as the cap is trimmed down, with the caps picked out by each F1
-    budget marked on top.
+    Plots the cumulative assignment F1 loss as a search cap is reduced.
+    The cap values and cumulative losses form the sensitivity curve, while
+    the configured F1-loss budgets are marked at their corresponding caps.
     """
     caps = curve.get("caps") or []
     losses = curve.get("cum_loss_pct") or []
@@ -606,8 +660,7 @@ def _plot_sensitivity_param(ax, curve: dict, sens: dict, pname: str) -> None:
         return
 
     if len(caps) == 1:
-        # cap already at minimum for every item in this pass --
-        # Show a single flat marker instead
+        # Cap already at minimum for every item in this pass
         cap = caps[0]
         ax.axhline(0.0, color="#4C72B0", linewidth=1.0, alpha=0.5)
         ax.scatter([cap], [0.0], color="#4C72B0", zorder=5, s=30)
@@ -621,9 +674,7 @@ def _plot_sensitivity_param(ax, curve: dict, sens: dict, pname: str) -> None:
 
     ax.plot(caps, losses, color="#4C72B0", linewidth=1.2)
 
-    # Several budgets can resolve to the same cap (e.g. once the curve is
-    # essentially flat at the low end) -- group those so their annotations
-    # don't get drawn stacked on top of each other.
+    # Several budgets can resolve to the same cap -> group them
     grouped_points: dict[tuple, list[str]] = defaultdict(list)
     for budget_name in ("0.01pct", "0.1pct", "1pct"):
         if budget_name not in sens:
@@ -645,8 +696,10 @@ def _plot_sensitivity_param(ax, curve: dict, sens: dict, pname: str) -> None:
     ax.invert_xaxis()
 
 
-def generate_plots(evaluated_items: list[dict], file_meta: dict, distributions: dict,
-                    hyperparam: dict, n_total: int, plots_dir: Path) -> list[Path]:
+def generate_plots(evaluated_items: list[dict], file_meta: dict, distributions: dict, hyperparam: dict, n_total: int, plots_dir: Path) -> list[Path]:
+    """
+    Generates all plots for the search and hyperparameter analysis.
+    """
     plots_dir.mkdir(parents=True, exist_ok=True)
     saved: list[Path] = []
     predicate_linkers = file_meta.get("predicate_linkers") or []
@@ -678,7 +731,7 @@ def generate_plots(evaluated_items: list[dict], file_meta: dict, distributions: 
     plt.close(fig)
     saved.append(path)
 
-    # 2. Per-pass histograms: beam rank / entity permutation index / predicate permutation index
+    # 2. Per-pass histograms: beam rank, entity permutation index, predicate permutation index
     for lid in predicate_linkers:
         items_for_pass = [
             it for it in evaluated_items
@@ -687,12 +740,9 @@ def generate_plots(evaluated_items: list[dict], file_meta: dict, distributions: 
         if not items_for_pass:
             continue
         fig, axes = plt.subplots(1, 3, figsize=(12, 3.5))
-        _hist_ax(axes[0], [it["executed_beam_rank"] for it in items_for_pass if it.get("executed_beam_rank") is not None],
-                 "Winning beam rank", "beam rank")
-        _hist_ax(axes[1], [it["winning_entity_perm_idx"] for it in items_for_pass if it.get("winning_entity_perm_idx") is not None],
-                 "Winning entity permutation index", "entity permutation index")
-        _hist_ax(axes[2], [it["winning_predicate_perm_idx"] for it in items_for_pass if it.get("winning_predicate_perm_idx") is not None],
-                 "Winning predicate permutation index", "predicate permutation index")
+        _hist_ax(axes[0], [it["executed_beam_rank"] for it in items_for_pass if it.get("executed_beam_rank") is not None], "Winning beam rank", "beam rank")
+        _hist_ax(axes[1], [it["winning_entity_perm_idx"] for it in items_for_pass if it.get("winning_entity_perm_idx") is not None], "Winning entity permutation index", "entity permutation index")
+        _hist_ax(axes[2], [it["winning_predicate_perm_idx"] for it in items_for_pass if it.get("winning_predicate_perm_idx") is not None], "Winning predicate permutation index", "predicate permutation index")
         fig.suptitle(f"Pass '{lid}' (n={len(items_for_pass)})")
         path = plots_dir / f"winning_index_distributions_{lid.replace('.', '_')}.pdf"
         fig.savefig(path)
@@ -700,7 +750,7 @@ def generate_plots(evaluated_items: list[dict], file_meta: dict, distributions: 
         plt.close(fig)
         saved.append(path)
 
-    # 3. Full F1-vs-cap sensitivity curves per pass/param
+    # 3. Full sensitivity curves per pass
     for lid, data in hyperparam.items():
         fig, axes = plt.subplots(1, 3, figsize=(13, 3.8))
         param_specs = [
@@ -742,10 +792,9 @@ def generate_plots(evaluated_items: list[dict], file_meta: dict, distributions: 
     return saved
 
 
-def generate_per_linker_plots(evaluated_items: list[dict], predicate_linkers: list[str],
-                               per_linker_performance: dict, plots_dir: Path) -> list[Path]:
+def generate_per_linker_plots(evaluated_items: list[dict], predicate_linkers: list[str], per_linker_performance: dict, plots_dir: Path) -> list[Path]:
     """
-    Plots for build_per_linker_performance: answer quality broken down by winning predicate-linker pass
+    Generates plots comparing answer quality across predicate-linker passes.
     """
     plots_dir.mkdir(parents=True, exist_ok=True)
     saved: list[Path] = []
@@ -818,46 +867,53 @@ def generate_per_linker_plots(evaluated_items: list[dict], predicate_linkers: li
 def main():
     args = parse_args()
 
+    if not args.endpoint_url:
+        raise ValueError((
+            "$(ENDPOINT_URL) is not set. Run using the Makefile "
+            "to automatically set it to the run config's value."
+            ))
+
     run_stem = Path(args.run_config).stem
 
+    # Build paths
     res_path = resolved_path(_DATA_DIR, args.dataset, args.model_id, run_stem, args.split, args.mode)
     eval_out = evaluated_path(_DATA_DIR, args.dataset, args.model_id, run_stem, args.split, args.mode)
 
     if not res_path.exists():
         raise FileNotFoundError(f"Resolved file not found: {res_path}")
 
-    print(f"Loading resolved predictions: {res_path}")
+    print(f"[INFO] Loading resolved predictions: {res_path}")
     raw = json.loads(res_path.read_text(encoding="utf-8"))
 
     file_meta: dict = raw["meta"]
     items: list[dict] = raw["items"]
 
-    kb_name = file_meta.get("kb", "freebase")
+    # Load KB module
+    kb_name = file_meta.get("kb")
     kb_module = load_kb_module(kb_name)
     common_prefixes = getattr(kb_module, "COMMON_PREFIXES", {})
-    init_uri_normaliser(kb_module)
-    print(f"Loaded KB module '{kb_name}' ({len(common_prefixes)} prefixes)")
+    print(f"[INFO] Loaded KB module '{kb_name}' ({len(common_prefixes)} prefixes)")
 
-    print(f"Loaded {len(items)} items")
+    print(f"[INFO] Loaded {len(items)} items")
     predicate_linkers_str = "+".join(file_meta.get("predicate_linkers") or [])
-    print(f"  Resolved with: {file_meta.get('model_id')} / {file_meta.get('mode')} mode "
-          f"/ {file_meta.get('entity_linker')}+{predicate_linkers_str}")
+    print(f"[INFO]   Resolved with: {file_meta.get('model_id')} / {file_meta.get('mode')} mode / {file_meta.get('entity_linker')}+{predicate_linkers_str}")
 
     gold_source_label = "live SPARQL execution" if args.get_live_gold else "saved"
     if args.live_only:
-        gold_source_label += " (strict — saved fallback disabled)"
-    print(f"  Gold answers:  {gold_source_label}")
+        gold_source_label += " (strict, saved fallback disabled)"
+    print(f"[INFO]   Gold answers:  {gold_source_label}")
 
     if args.max_samples:
         items = items[: args.max_samples]
         print(f"Capped to {len(items)} items")
 
     print()
-    print(f"Run folder:         {run_stem}")
-    print(f"Evaluating against: {args.endpoint_url}")
-    print(f"Evaluated file:     {eval_out}")
-    print(f"Ledger:             {args.ledger}\n")
+    print(f"[INFO] Run folder:         {run_stem}")
+    print(f"[INFO] Evaluating against: {args.endpoint_url}")
+    print(f"[INFO] Evaluated file:     {eval_out}")
+    print(f"[INFO] Ledger:             {args.ledger}\n")
 
+    # Accumulators
     evaluated_items = []
     totals: dict[str, float] = defaultdict(float)
     n_executable = 0
@@ -865,28 +921,31 @@ def main():
     n_exec_error = 0
     gold_source_counts: dict[str, int] = defaultdict(int)
 
+    # Iterate through resolved items
     for item in tqdm(items):
         item_id = item.get("ID", item.get("id", ""))
         question = item.get("question", "")
         query = item.get("executed_query")
 
-        # get gold answers + source
+        # Get gold answers + source
         gold_rows, gold_src = get_gold_answers(
             item, args.endpoint_url, args.timeout, args.get_live_gold, args.live_only, common_prefixes
         )
         gold_source_counts[gold_src] += 1
 
-        # items with no gold answer at all can not be meaningfully scored 
+        # Items with no valid gold answer at all can not be meaningfully scored 
         is_stale = not gold_rows
 
-        # pred answers
+        # Pred answers
         pred_rows: list[list[str]] = []
         exec_status = "no_query"
 
+        # Item was resolved
         if query and item.get("executable", False):
             n_executable += 1
             bindings = execute_sparql(query, args.endpoint_url, args.timeout)
 
+            # Execution failed, should not happen naturally, as the same query succeeded during resolution
             if bindings is None:
                 exec_status  = "error"
                 n_exec_error += 1
@@ -898,7 +957,7 @@ def main():
                     exec_status  = "empty"
                     n_empty_pred += 1
 
-        # scoring
+        # Scoring
         if is_stale:
             item_scores = {"exact_match": None, "assignment_f1": None, "hit1": None}
         else:
@@ -907,27 +966,27 @@ def main():
                 totals[k] += v
 
         evaluated_items.append({
-            "ID":               item_id,
-            "question":         question,
-            "gold_sparql":      item.get("sparql", ""),
-            "gold_entity_map":  item.get("gold_entity_map",   {}),
+            "ID": item_id,
+            "question": question,
+            "gold_sparql": item.get("sparql", ""),
+            "gold_entity_map": item.get("gold_entity_map",   {}),
             "gold_relation_map": item.get("gold_relation_map", {}),
-            "gold_answers":     gold_rows,
+            "gold_answers": gold_rows,
             "gold_answer_source": gold_src,
-            "stale":            is_stale,
-            "pred_sparql":      query,
-            "pred_entity_map":  item.get("entity_map_used",   {}),
+            "stale": is_stale,
+            "pred_sparql": query,
+            "pred_entity_map": item.get("entity_map_used",   {}),
             "pred_relation_map": item.get("predicate_map_used", {}),
-            "pred_answers":     pred_rows,
+            "pred_answers": pred_rows,
             "executed_beam_rank": item.get("executed_beam_rank"),
-            "executable":       item.get("executable", False),
-            "exec_status":      exec_status,
-            "winning_pass_index":         item.get("winning_pass_index"),
-            "winning_pass_linker":        item.get("winning_pass_linker"),
-            "winning_entity_perm_idx":    item.get("winning_entity_perm_idx"),
+            "executable": item.get("executable", False),
+            "exec_status": exec_status,
+            "winning_pass_index": item.get("winning_pass_index"),
+            "winning_pass_linker": item.get("winning_pass_linker"),
+            "winning_entity_perm_idx": item.get("winning_entity_perm_idx"),
             "winning_predicate_perm_idx": item.get("winning_predicate_perm_idx"),
-            "item_runtime_sec":           item.get("item_runtime_sec"),
-            "pass_runtimes_sec":          item.get("pass_runtimes_sec"),
+            "item_runtime_sec": item.get("item_runtime_sec"),
+            "pass_runtimes_sec": item.get("pass_runtimes_sec"),
             **item_scores,
         })
 
@@ -938,55 +997,55 @@ def main():
     def pct(x): return round(x / n * 100, 2) if n else 0.0
 
     aggregate = {
-        "num_items":       n,
-        "num_stale":       n_stale,
-        "stale_pct":       pct(n_stale),
-        "num_scored":      n_scored,
-        "num_executable":  n_executable,
-        "executable_pct":  pct(n_executable),
-        "num_exec_error":  n_exec_error,
-        "num_empty_pred":  n_empty_pred,
-        "num_with_gold":   n_scored,
-        "exact_match":     round(totals["exact_match"]    / n_scored, 4) if n_scored else 0.0,
-        "assignment_f1":   round(totals["assignment_f1"]  / n_scored, 4) if n_scored else 0.0,
-        "hit1":            round(totals["hit1"]           / n_scored, 4) if n_scored else 0.0,
+        "num_items": n,
+        "num_stale": n_stale,
+        "stale_pct": pct(n_stale),
+        "num_scored": n_scored,
+        "num_executable": n_executable,
+        "executable_pct": pct(n_executable),
+        "num_exec_error": n_exec_error,
+        "num_empty_pred": n_empty_pred,
+        "num_with_gold": n_scored,
+        "exact_match": round(totals["exact_match"] / n_scored, 4) if n_scored else 0.0,
+        "assignment_f1": round(totals["assignment_f1"] / n_scored, 4) if n_scored else 0.0,
+        "hit1": round(totals["hit1"] / n_scored, 4) if n_scored else 0.0,
     }
 
     print("\n" + "=" * 50)
-    print(f"  Dataset:        {file_meta.get('dataset')} / {file_meta.get('split')}")
-    print(f"  Model:          {file_meta.get('model_id')}")
-    print(f"  Mode:           {file_meta.get('mode')}")
-    print(f"  KB:             {kb_name}")
-    print(f"  Entity Linkers: {args.entity_linkers.split(',')}")
-    print(f"  Predicate Linkers: {args.predicate_linkers.split(',')}")
-    print(f"  Eval endpoint:  {args.endpoint_url}")
-    print(f"  Gold source:    {gold_source_label}")
+    print(f"[INFO] Dataset: {file_meta.get('dataset')} / {file_meta.get('split')}")
+    print(f"[INFO] Model: {file_meta.get('model_id')}")
+    print(f"[INFO] Mode: {file_meta.get('mode')}")
+    print(f"[INFO] KB: {kb_name}")
+    print(f"[INFO] Entity Linkers: {args.entity_linkers.split(',')}")
+    print(f"[INFO] Predicate Linkers: {args.predicate_linkers.split(',')}")
+    print(f"[INFO] Eval endpoint: {args.endpoint_url}")
+    print(f"[INFO] Gold source:    {gold_source_label}")
     if args.get_live_gold:
-        print(f"    live={gold_source_counts.get('live', 0)}  "
+        print(f"[INFO]   live={gold_source_counts.get('live', 0)}  "
               f"saved_fallback={gold_source_counts.get('saved_fallback', 0)}  "
               f"empty={gold_source_counts.get('empty', 0)}")
-    print(f"  Items:          {n}")
-    print(f"  Stale (no gold): {n_stale} ({aggregate['stale_pct']}%)  [excluded from stats below]")
-    print(f"  Scored:         {n_scored}")
-    print(f"  Executable:     {n_executable} ({aggregate['executable_pct']}%)")
-    print(f"  Exec errors:    {n_exec_error}")
-    print(f"  Empty results:  {n_empty_pred}")
+    print(f"[INFO] Items: {n}")
+    print(f"[INFO] Stale (no gold): {n_stale} ({aggregate['stale_pct']}%)  [excluded from stats below]")
+    print(f"[INFO] Scored: {n_scored}")
+    print(f"[INFO] Executable: {n_executable} ({aggregate['executable_pct']}%)")
+    print(f"[INFO] Exec errors: {n_exec_error}")
+    print(f"[INFO] Empty results: {n_empty_pred}")
     print("-" * 50)
-    print(f"  Exact Match:    {aggregate['exact_match']:.4f}")
-    print(f"  Assignment F1:  {aggregate['assignment_f1']:.4f}")
-    print(f"  Hit@1:          {aggregate['hit1']:.4f}")
+    print(f"[INFO] Exact Match:    {aggregate['exact_match']:.4f}")
+    print(f"[INFO] Assignment F1:  {aggregate['assignment_f1']:.4f}")
+    print(f"[INFO] Hit@1:          {aggregate['hit1']:.4f}")
     print("=" * 50 + "\n")
 
-    # write eval file
+    # Write eval file
     eval_out.parent.mkdir(parents=True, exist_ok=True)
     eval_payload = {
         "meta": {
             **file_meta,
-            "eval_timestamp":     datetime.now(timezone.utc).isoformat(),
-            "eval_endpoint":      args.endpoint_url,
+            "eval_timestamp": datetime.now(timezone.utc).isoformat(),
+            "eval_endpoint": args.endpoint_url,
             "gold_answer_source": "live" if args.get_live_gold else "saved",
-            "gold_live_only":     args.live_only,
-            "eval_note":          args.note,
+            "gold_live_only": args.live_only,
+            "eval_note": args.note,
             **aggregate,
         },
         "items": evaluated_items,
@@ -994,8 +1053,9 @@ def main():
     eval_out.write_text(
         json.dumps(eval_payload, indent=2, ensure_ascii=False), encoding="utf-8"
     )
-    print(f"Evaluated file  → {eval_out}")
+    print(f"[INFO] Evaluated file -> {eval_out}")
 
+    # Results ledger entry
     entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "resolved_file": str(res_path.resolve()),
@@ -1030,16 +1090,15 @@ def main():
     ledger = load_ledger(args.ledger)
     ledger.append(entry)
     save_ledger(ledger, args.ledger)
-    print(f"Ledger updated  → {args.ledger}  ({len(ledger)} total runs)")
+    print(f"[INFO] Ledger updated  → {args.ledger}  ({len(ledger)} total runs)")
 
     # ------------------------------------------------------------------
-    # distribution + hyperparameter + per-linker analysis
+    # Distribution + Hyperparameter + per-linker analysis
 
     if args.skip_analysis:
         return
 
-    print("\nRunning analysis (winning-pass/permutation distributions, "
-          "per-linker executability & F1 impact, hyperparameter sensitivity)...")
+    print("\n[INFO] Running analysis (winning-pass/permutation distributions, per-linker executability & F1 impact, hyperparameter sensitivity)...")
 
     predicate_linkers = file_meta.get("predicate_linkers") or []
     distributions = build_distribution_analysis(evaluated_items, predicate_linkers)
@@ -1050,7 +1109,7 @@ def main():
     for lid, d in per_linker_performance.items():
         if lid == "_stale":
             print(f"  {lid:35s} n={d['count']:5d} ({d['pct_of_total']:5.2f}%)  "
-                  f"exec={d['executable_pct']:6.2f}%  (no gold answer — excluded from scoring)")
+                  f"exec={d['executable_pct']:6.2f}%  (no gold answer; excluded from scoring)")
             continue
         print(f"  {lid:35s} n={d['count']:5d} ({d['pct_of_total']:5.2f}%)  "
               f"exec={d['executable_pct']:6.2f}%  EM={d['exact_match_rate']:.4f}  "
@@ -1075,12 +1134,12 @@ def main():
 
     a_path = analysis_json_path(eval_out)
     a_path.write_text(json.dumps(analysis_payload, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"\nAnalysis file   → {a_path}")
+    print(f"\n[INFO] Analysis file -> {a_path}")
 
     plots_dir = analysis_plots_dir(eval_out)
     saved_plots = generate_plots(evaluated_items, file_meta, distributions, hyperparam, n, plots_dir)
     saved_plots += generate_per_linker_plots(evaluated_items, predicate_linkers, per_linker_performance, plots_dir)
-    print(f"Analysis plots  → {plots_dir}  ({len(saved_plots)} figures, PDF + PNG)")
+    print(f"[INFO] Analysis plots -> {plots_dir}  ({len(saved_plots)} figures)")
 
 
 if __name__ == "__main__":

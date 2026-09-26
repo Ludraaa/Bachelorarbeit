@@ -23,15 +23,13 @@ def call_with_retry(
         except exceptions as e:
             if attempt < retries:
                 logger.warning(
-                    f"[retry] {getattr(fn, '__name__', str(fn))} attempt {attempt + 1}/{retries + 1} "
-                    f"failed: {e}. Retrying in {delay:.1f}s..."
+                    f"[RETRY] {getattr(fn, '__name__', str(fn))} Attempt {attempt + 1}/{retries + 1} failed: {e}. Retrying in {delay:.1f}s..."
                 )
                 time.sleep(delay)
                 delay *= backoff
             else:
                 logger.error(
-                    f"[retry] {getattr(fn, '__name__', str(fn))} failed after "
-                    f"{retries + 1} attempts: {e}"
+                    f"[RETRY] {getattr(fn, '__name__', str(fn))} Failed after {retries + 1} attempts: {e}"
                 )
 
     return on_fail

@@ -11,7 +11,6 @@ from src.sexpr.jena_interface import (
     restore_query_form,
 )
 
-
 _SPARQL_HEADERS = {
     "Accept":     "application/sparql-results+json",
     "User-Agent": "kbqa_pipeline/1.0",
@@ -19,9 +18,14 @@ _SPARQL_HEADERS = {
 
 
 # ---------------------------------------------------------------------------
-# Gold SPARQL normalisation
+# Gold SPARQL normalization
 
 def normalize_gold_sparql(sparql: str, common_prefixes) -> tuple[str | None, str | None]:
+    """
+    For a given SPARQL query, a normalized version is produced using Apache Jena.
+    The query is preprocessed to alleviate common issues that Jena does not accept.
+    Afterwards, the query is transformed to Jena Syntax Expression and back to SPARQL.
+    """
     try:
         fixed   = fix_sparql_for_jena(sparql, common_prefixes)
         form    = detect_query_form(fixed)
@@ -38,6 +42,9 @@ def normalize_gold_sparql(sparql: str, common_prefixes) -> tuple[str | None, str
 # SPARQL execution
 
 def _execute_sparql_raw(sparql: str, endpoint: str, timeout: int):
+    """
+    Executes a given SPARQL query against the endpoint. No retries.
+    """
     resp = requests.post(
         endpoint,
         data={"query": sparql},
@@ -52,6 +59,10 @@ def _execute_sparql_raw(sparql: str, endpoint: str, timeout: int):
 
 
 def execute_sparql(sparql: str, endpoint: str, timeout: int = 30):
+    """
+    Executes a given SPARQL query against the endpoint. With retries
+    and exponential backoff.
+    """    
     return call_with_retry(
         _execute_sparql_raw,
         sparql,
@@ -66,20 +77,18 @@ def execute_sparql(sparql: str, endpoint: str, timeout: int = 30):
 
 
 # ---------------------------------------------------------------------------
-# Result normalisation
+# Result normalization
 
 def bindings_to_rows(results, kb) -> list[list[str]]:
     """
-    Convert raw SPARQL endpoint results into the list-of-rows format required
-    by assignment_f1_score: each result row becomes a list of normalised value
-    strings, preserving all projected variables.
+    Convert raw SPARQL endpoint results into the format required by assignment f1: 
+    Each result row becomes a list of KB-local identifiers or literals.
 
     Handles:
-      ASK  →  [["true"]] / [["false"]]
-      SELECT binding dicts  →  [[val, ...], ...]
-
-    Non-English literals are dropped. URI values are reduced to their local name.
+      ASK -> [["true"]] / [["false"]]
+      SELECT -> [[val, ...], ...]
     """
+    # ASK
     if isinstance(results, bool):
         return [[str(results).lower()]]
 
@@ -98,10 +107,12 @@ def bindings_to_rows(results, kb) -> list[list[str]]:
             if not isinstance(val, dict):
                 continue
             raw = val.get("value", "")
+            # Convert full IRI into kb-local identifier
             if val.get("type") == "uri":
                 values.append(kb.normalize_answer_uri(raw))
             else:
                 lang = val.get("xml:lang", "")
+                # Skip non-english literals
                 if lang and lang != "en":
                     continue
                 stripped = raw.strip()
@@ -116,7 +127,8 @@ def bindings_to_rows(results, kb) -> list[list[str]]:
 
 def ensure_rows(answer) -> list[list[str]]:
     """
-    Force an answer field to list[list[str]] regardless of how it was stored.
+    Force an answer field to list[list[str]] format.
+    This function is for legacy support and should not be needed for new runs.
     """
     if not isinstance(answer, list) or not answer:
         return []

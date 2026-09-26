@@ -43,9 +43,6 @@ class Linker(BasePredicateLinker):
     """
     Freebase predicate linker replicating the ChatKBQA 2-hop neighbourhood
     expansion fallback (try_relation in the original codebase).
-
-    QLever performs only cheap structural filters. The original string-based
-    predicate filters are applied locally in Python after retrieval.
     """
 
     def __init__(
@@ -141,7 +138,7 @@ class Linker(BasePredicateLinker):
     @classmethod
     def _valid_relation_pair(cls, r0_uri: str, r1_uri: str) -> bool:
         """
-        pair is valid iff both predicates pass the local filter
+        Pair is valid iff both predicates pass the local filter.
         """
         return (
             cls._valid_relation(r0_uri)
@@ -345,10 +342,6 @@ LIMIT {self.limit}"""
         """
         Union of all relation local names reachable within 2 hops from
         entity_id, collected via 4 separate queries.
-
-        Returns (relations, fetch_debug).
-
-        Results are cached by entity MID.
         """
 
         self._stats["total_fetches"] += 1

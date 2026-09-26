@@ -248,6 +248,9 @@ For example:
 ```yaml
 infer_config: configs/infer/default.yaml
 ```
+The configuration is passed to Llama-Factory when initializing the inference model. It is primarily used to specify model loading and other Llama-Factory-supported inference settings.
+
+Note: The inference procedure itself is largely fixed by the implementation. In particular, generation parameters such as the number of beams and diversity penalty are configured through the generate section of the run configuration and passed explicitly to the Hugging Face generation API. Consequently, Llama-Factory configuration options that affect generation may be overridden by this implementation.
 
 ---
 
