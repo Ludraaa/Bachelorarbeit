@@ -1,7 +1,5 @@
 import importlib
-from src.linkers.base import BaseEntityLinker, BasePredicateLinker, BaseExtractor
-from src.utils.kb import load_kb_module
-
+from src.linkers.base import BaseEntityLinker, BasePredicateLinker
 
 def load_entity_linker(name: str, **overrides) -> BaseEntityLinker:
     """

@@ -191,6 +191,7 @@ def get_gold_answers(
     get_live_gold: bool,
     live_only: bool,
     common_prefixes,
+    kb
 ) -> tuple[list[list[str]], str]:  # answers, note
     """
     Retrieves the gold answer set for a specific dataset item.
@@ -216,7 +217,7 @@ def get_gold_answers(
     raw = execute_sparql(normed, endpoint, timeout)
 
     if raw is not None:
-        rows = bindings_to_rows(raw)
+        rows = bindings_to_rows(raw, kb)
         # Return live gold results
         if rows:
             return rows, "live"
@@ -929,7 +930,7 @@ def main():
 
         # Get gold answers + source
         gold_rows, gold_src = get_gold_answers(
-            item, args.endpoint_url, args.timeout, args.get_live_gold, args.live_only, common_prefixes
+            item, args.endpoint_url, args.timeout, args.get_live_gold, args.live_only, common_prefixes, kb_module
         )
         gold_source_counts[gold_src] += 1
 
@@ -950,7 +951,7 @@ def main():
                 exec_status  = "error"
                 n_exec_error += 1
             else:
-                pred_rows = bindings_to_rows(bindings)
+                pred_rows = bindings_to_rows(bindings, kb_module)
                 if pred_rows:
                     exec_status = "ok"
                 else:

@@ -2,7 +2,7 @@
 
 Run configurations define the parameters of a full pipeline run. They act as a central place to specify the dataset, knowledge base, model configuration, linker configuration, and options for the individual pipeline steps.
 
-Although running the python scripts seperately is technically possible, using the Docker + Makefile + run config setup is the intended approach.
+Although running the python scripts separately is technically possible, using the Docker + Makefile + run config setup is the intended approach.
 
 A specific run configuration could look something like this:
 
@@ -95,6 +95,9 @@ Specifies the target representation used during training format conversion.
 
 * `jena`: produce the Jena Syntax Expression representation.
 * `sparql`: produce normalized SPARQL expression.
+* `chatkbqa_cwq`: legacy format of original ChatKBQA for ComplexWebQuestions. Only supported for resolve and eval.
+* `chatkbqa_webqsp`: legacy format of original ChatKBQA for WebQuestionSP. Only supported for resolve and eval.
+
 
 For example:
 
@@ -215,7 +218,7 @@ For example:
 dataset_config: configs/datasets/default.yaml
 ```
 This is used by the conversion step to normalize any dataset into what the further pipeline steps expect.
-See the **Dataset Configurations** schema for the available dataset configuration options.
+See the [Dataset config schema](../datasets/schema.md) for the available dataset configuration options.
 
 ---
 
@@ -254,7 +257,7 @@ Note: The inference procedure itself is largely fixed by the implementation. In 
 
 ---
 
-# Conversion Options
+# Convert Options
 
 In the conversion step, all items of a dataset are augmented by parsing the gold SPARQL queries into the desired training format. Additionally, this step normalizes the structure of any dataset using a dataset configuration.
 
@@ -316,3 +319,484 @@ This option is intended for cases where any gold-query execution is unnecessary,
 
 ---
 
+# Labels Options
+
+The label insertion step extracts all IRIs and fetches their corresponding natural language labels and type memberships from the knowledge base. This step resolves the labels, caches the results to optimize subsequent runs, and generates the label-enriched dataset files alongside gold entity, relation, and type maps.
+
+The corresponding command-line script for this step is `insert_labels.py`.
+
+The options below control the behavior of the label resolution process.
+
+## `labels`
+
+Label-specific options can be placed in the `labels` section of a run configuration.
+
+---
+
+### `debug`
+
+Enables verbose debug logging and comprehensive failure reporting during label and type resolution.
+
+**Type:** `boolean`
+
+**Default:** `false`
+
+For example:
+
+```yaml
+labels:
+  debug: true
+```
+
+When enabled, the pipeline prints detailed execution traces to the console, including:
+* Cache hit, miss, and null statistics.
+* SPARQL endpoint query batch progress and sizes.
+* Formatter substitutions for individual IRIs.
+* A detailed failure report at the end of the run that groups unresolved entity and relation labels by failure reason (e.g., `cached_null`, `sparql_no_label`, or `sparql_error`), listing specific problematic URIs and the IDs of the examples they affect.
+
+---
+
+# Prepare Options
+
+In the dataset preparation step, the pipeline takes the label-enriched data and formats it into the Alpaca-style JSON structure expected by Llama-Factory. It also automatically registers the dataset in Llama-Factory's `dataset_info.json` so it can be referenced directly by name in training configurations.
+
+The corresponding command-line script is `prepare_llm_data.py`.
+
+---
+
+Currently, there are no step-specific configuration options for the `prepare` section. This step relies entirely on the [Shared Run Options](#shared-run-options).
+
+---
+
+# Generation Options
+
+In the generation step, the pipeline uses a trained Llama-Factory model to perform group beam search inference on the target dataset split. It generates candidate Logical Form queries (s-expressions or normalized SPARQL) for each natural language question, deduplicates identical outputs per item while preserving rank order, and records accuracy metrics such as exact matches at rank 0 and overall beam hits against the gold query.
+
+The corresponding command-line script is `generate_predictions.py`.
+
+The options below control beam search, token limits, sample capping, and execution modes during model inference.
+
+## `generate`
+
+Generation-specific options can be placed in the `generate` section of a run configuration.
+
+---
+
+### `num_beams`
+
+Specifies the number of prediction candidate beams to generate per input question using group beam search.
+
+**Type:** `integer`
+
+**Default:** `8`
+
+For example:
+
+```yaml
+generate:
+  num_beams: 8
+```
+
+Higher beam counts can increase the chances of capturing the gold logical form within the predictions, although this has diminishing returns and a runtime cost (both when generating and later resolving).
+
+---
+
+### `diversity_penalty`
+
+Applies a diversity penalty for group beam search across generated candidate sequences.
+
+**Type:** `float`
+
+**Default:** `0.5`
+
+For example:
+
+```yaml
+generate:
+  diversity_penalty: 0.5
+```
+
+A higher diversity penalty forces individual beam groups to explore distinct generation paths, producing a more varied set of candidate queries at the cost of potential coherence drop. In my experiments, recommended values are typically `~1.0` for Llama-based models and `~0.5` for Qwen-based models. Note that these values are not optimal and may vary strongly depending on the actual trained model. They should be treated more as guidelines instead.
+
+---
+
+### `max_new_tokens`
+
+Specifies the maximum number of new tokens the model is allowed to generate for each output query.
+
+**Type:** `integer`
+
+**Default:** `512`
+
+For example:
+
+```yaml
+generate:
+  max_new_tokens: 512
+```
+
+---
+
+### `max_samples`
+
+Caps the total number of dataset entries processed during the generation step.
+
+**Type:** `integer`
+
+**Default:** None (processes the entire dataset split)
+
+For example:
+
+```yaml
+generate:
+  max_samples: 50
+```
+
+This option is primarily used for quick debugging or testing inference configurations. It can be a good idea to initially limit max samples in order to find a good diversity penalty.
+
+---
+
+### `oracle`
+
+Bypasses model inference and directly outputs the gold query as the single prediction.
+
+**Type:** `boolean`
+
+**Default:** `false`
+
+For example:
+
+```yaml
+generate:
+  oracle: true
+```
+
+When set to `true`, model loading and inference are skipped entirely. The script outputs the gold query (`sexpr_with_labels`) as the prediction. This is useful for establishing upper-bound theoretical performance limits in downstream resolution and evaluation steps.
+
+---
+
+# Resolve Options
+
+In the resolution step, the pipeline takes the candidate logical form queries generated during the generation step and maps the predicted entity and predicate placeholders to actual knowledge base identifiers. This is achieved by systematically applying pre-defined entity and predicate linkers across the predicted beams to find an executable SPARQL query.
+
+The corresponding command-line script for this step is `resolve_predictions.py`.
+
+The options below control the behavior of the beam traversal, linker permutation limits, score thresholds, and timeouts during resolution.
+
+## `resolve`
+
+Resolution-specific options can be placed in the `resolve` section of a run configuration.
+
+---
+
+### `k1_per_pass`
+
+Specifies the maximum number of entity permutations generated per beam per predicate linking pass.
+
+**Type:** `string`
+
+**Default:** `"25"`
+
+For example:
+
+```yaml
+resolve:
+  k1_per_pass: "100,5"
+
+```
+In this example, during the first predicate linking pass, entity retrieval will produce a maximum of 100 entity permutations per beam. In the second predicate linking pass, only 5 entity permutations will be produced per beam.
+The values are provided as a comma-separated string. If the number of passes (determined by the number of predicate linkers) exceeds the number of provided values, the last value is reused for all subsequent passes.
+
+---
+
+### `t1_per_pass`
+
+Specifies the score threshold for entity permutations per predicate-linker pass. Permutations with a score below this threshold are discarded.
+
+**Type:** `string`
+
+**Default:** `"0.0"`
+
+For example:
+
+```yaml
+resolve:
+  t1_per_pass: "0.5,0.0"
+
+```
+
+Values are comma-separated. The last value is reused if there are more passes than specified values.
+
+---
+
+### `k2_per_pass`
+
+Specifies the maximum number of predicate permutations generated for every entity permutation per predicate-linker pass.
+
+**Type:** `string`
+
+**Default:** `"5"`
+
+For example:
+
+```yaml
+resolve:
+  k2_per_pass: "5,15"
+
+```
+Assuming the numbers used in this example, during the first predicate linking pass every entity permutation generated by entity retrieval results in a maximum of 5 predicate permutations. For the second predicate
+linking pass, this number would instead be 15.
+Values are comma-separated. The last value is reused if there are more passes than specified values.
+
+---
+
+### `t2_per_pass`
+
+Specifies the score threshold for predicate permutations per predicate-linker pass.
+
+**Type:** `string`
+
+**Default:** `"0.0"`
+
+For example:
+
+```yaml
+resolve:
+  t2_per_pass: "0.2,0.0"
+
+```
+
+Values are comma-separated. The last value is reused if there are more passes than specified values.
+
+---
+
+### `beam_limits`
+
+Specifies the maximum number of prediction beams to evaluate per predicate-linker pass.
+
+**Type:** `string`
+
+**Default:** `"8"`
+
+For example:
+
+```yaml
+resolve:
+  beam_limits: "8,4"
+
+```
+This directly limits how many prediction beams a predicate linking pass has access to. This could be used to limit a more expensive linking pass to only the high-confidence beams.
+Values are comma-separated. A value of `0` indicates no limit (all available beams will be evaluated). The last value is reused if there are more passes than specified values.
+
+---
+
+### `linker_params`
+
+Provides a JSON string containing custom hyperparameters to override default settings for specific entity or predicate linkers.
+
+**Type:** `string`
+
+**Default:** `"{}"`
+
+For example:
+
+```yaml
+resolve:
+  linker_params: '{"ChatKBQA.gold_simcse": {"gold_threshold": 0.5}}'
+
+```
+
+The keys in the JSON dictionary must match the linker IDs defined in the shared `entity_linkers` and `predicate_linkers` configuration.
+
+---
+
+### `item_time_limit_sec`
+
+Specifies a total time budget in seconds allocated for resolving a single dataset item.
+
+**Type:** `float`
+
+**Default:** None (no time limit)
+
+For example:
+
+```yaml
+resolve:
+  item_time_limit_sec: 120.0
+
+```
+
+If resolution of a single item exceeds this limit, processing is aborted and marked as timed out, allowing the pipeline to continue with the next item instead of losing a lot of time on complex queries.
+
+---
+
+### `label_fallback`
+
+Enables a legacy entity label fallback mechanism during SPARQL conversion. This is the label fallback used by the original ChatKBQA and only works on WebQSP and CWQ.
+
+**Type:** `boolean`
+
+**Default:** `false`
+
+For example:
+
+```yaml
+resolve:
+  label_fallback: true
+
+```
+
+This feature is intended for comparing performance between the extended pipeline and the original.
+
+---
+
+### `debug`
+
+Enables comprehensive debug logging and outputs an additional detailed JSONL trace file.
+
+**Type:** `boolean`
+
+**Default:** `false`
+
+For example:
+
+```yaml
+resolve:
+  debug: true
+
+```
+
+When enabled, the script outputs step-by-step traces of beam traversal, linking scores, generated permutations, and endpoint execution states to the console. It also saves a `.debug.json` file detailing the specific linker chains, candidates, and queries attempted for every beam and permutation. This debug file can grow very large (40GB+) for certain datasets.
+
+---
+
+# Eval Options
+
+In the evaluation step, the resolved prediction queries are scored against the gold queries. Exact Match, Assignment F1, and Hit@1 are computed by comparing the execution results of the predicted SPARQL queries against the gold answers. Additionally, results are logged to a central ledger containing all run results and performs distribution and hyperparameter sensitivity analysis to evaluate the impact of the hyperparameter configuration.
+
+The corresponding command-line script for this step is `eval_predictions.py`.
+
+The options below control gold answer resolution, execution timeouts, ledger locations, and analysis generation.
+
+## `eval`
+
+Evaluation-specific options can be placed in the `eval` section of a run configuration.
+
+---
+
+### `get_live_gold`
+
+Forces the pipeline to execute the normalized gold SPARQL query against the endpoint to retrieve the gold answers live, rather than relying on answers saved to the dataset.
+
+**Type:** `boolean`
+
+**Default:** `false`
+
+For example:
+
+```yaml
+eval:
+  get_live_gold: true
+
+```
+
+If the live execution fails or returns empty results, the pipeline falls back to the saved dataset answers unless `live_only` is enabled.
+Note that against a stable KB, results saved to the dataset during the convert step should be identical to live query results. If significant time has passed since
+converting the dataset or the KB has updated since, using live gold query results is advised.
+
+---
+
+### `live_only`
+
+Ignores saved gold answers entirely. Only items that successfully yield answers from the live gold SPARQL execution are scored.
+
+**Type:** `boolean`
+
+**Default:** `false`
+
+For example:
+
+```yaml
+eval:
+  get_live_gold: true
+  live_only: true
+
+```
+
+Requires `get_live_gold` to be `true`. If enabled, any item that fails to produce live gold answers is treated as "stale" (having no gold answer) and excluded from the final metrics.
+
+---
+
+### `timeout`
+
+Specifies the per-query HTTP timeout in seconds for executing SPARQL queries (both predicted and gold) against the endpoint.
+
+**Type:** `integer`
+
+**Default:** `60`
+
+For example:
+
+```yaml
+eval:
+  timeout: 120
+
+```
+
+---
+
+### `ledger`
+
+Specifies the file path to the central JSON ledger where the evaluation summary and metrics for this run will be appended.
+
+**Type:** `string`
+
+**Default:** `results/results.json`
+
+For example:
+
+```yaml
+eval:
+  ledger: "results/experiment_v2.json"
+
+```
+
+---
+
+### `skip_analysis`
+
+Disables the generation of the distribution, performance, and hyperparameter sensitivity analysis reports and plots.
+
+**Type:** `boolean`
+
+**Default:** `false`
+
+For example:
+
+```yaml
+eval:
+  skip_analysis: true
+
+```
+
+By default, the evaluation step generates a `.analysis.json` file and a folder of plots detailing the F1-impact of reducing specific beam and permutation search caps. Enable this flag to skip this step if you only need the metrics.
+
+---
+
+### `max_samples`
+
+Caps the number of items evaluated during this step.
+
+**Type:** `integer`
+
+**Default:** None (evaluates all resolved items)
+
+For example:
+
+```yaml
+eval:
+  max_samples: 100
+
+```
+
+Primarily used for debugging the evaluation logic without waiting for the entire dataset to process.

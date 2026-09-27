@@ -48,9 +48,9 @@ help:
 	@echo "  eval                  Step 7: Evaluate prediction quality"
 	@echo
 	@echo "Demos:"
-	@echo "  demo_qald7_full                   Run complete QALD-7 demo"
-	@echo "  demo_qald7_no_train               Run QALD-7 demo without training."
-	@echo "  demo_qald7_no_train_no_generate   Run QALD-7 demo without training/generation"
+	@echo "  demo-qald7-full                   Run complete QALD-7 demo"
+	@echo "  demo-qald7-no-train               Run QALD-7 demo without training."
+	@echo "  demo-qald7-no-train-no-generate   Run QALD-7 demo without training/generation"
 	@echo
 	@echo "  Note: The full demo requires Qwen2.5-7b to be downloaded to the base model folder. See SETUP.md for more details."
 	@echo "  Similarly, the no_train and no_train_no_generate variants can only be run from an uni-freiburg computer, as they require existing data."
@@ -59,7 +59,7 @@ help:
 	@echo "  make help-<target>"
 	@echo
 	@echo "Examples:"
-	@echo "  make demo_qald7_full"
+	@echo "  make demo-qald7-full"
 	@echo "  make pipeline RUN_CONFIG=configs/runs/Wikidata/Qald7/grisp.yaml"
 	@echo
 
@@ -648,6 +648,7 @@ eval:
 
 QALD7_DEMO_CONFIG := configs/runs/Wikidata/Qald7/sparql.yaml
 QALD7_DEMO_TRAINING_CONFIG := $(shell $(PYTHON) -c "import yaml; print(yaml.safe_load(open('$(QALD7_DEMO_CONFIG)'))['training_config'])")
+export ENDPOINT_URL := $(shell $(PYTHON) -c "import yaml; print(yaml.safe_load(open('$(QALD7_DEMO_CONFIG)')).get('endpoint_url', ''))")
 
 demo-qald7-full: download-qald7
 	$(PYTHON) src/sparql_to_sexpr.py --run_config $(QALD7_DEMO_CONFIG)

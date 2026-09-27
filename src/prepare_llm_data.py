@@ -65,7 +65,7 @@ def prepare_dataloader(args, split):
         print(f'[INFO] Input {split} split len: {len(data)}')
 
         # Filter empty outputs
-        before = len(examples)
+        before = len(data)
         examples = [x for x in data if x.get('sexpr_with_labels', '').strip()]
         print(f'[WARN] Dropped {before - len(examples)} entries with empty sexpr_with_labels')
         print(f'[INFO] Real {split} dataset len: {len(examples)}')

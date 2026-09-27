@@ -12,11 +12,11 @@ import psutil
 import requests
 from tqdm import tqdm
 
-from linkers import (
+from src.linkers import (
     load_entity_linker,
     load_predicate_linker,
 )
-from linkers.base import LinkingInput, LinkingOutput
+from src.linkers.base import LinkingInput, LinkingOutput
 from src.sexpr.jena_interface import algebra_to_sparql
 from src.utils.retry import call_with_retry
 from src.chatkbqa.lisp_to_sparql_chatkbqa import sexpr_to_sparql as chatkbqa_webqsp_sexpr_to_sparql
@@ -166,8 +166,8 @@ def parse_args():
     apply_run_config_defaults(parser, section="resolve")
 
     args = parser.parse_args()
-    require(args, "dataset", "split", "mode" "model_id", "run_config", "entity_linkers", "predicate_linkers", "kb")
-    validate_choice("mode", ["chatkbqa_webqsp", "chatkbqa_cwq", "jena", "sparql"])
+    require(args, "dataset", "split", "mode", "model_id", "run_config", "entity_linkers", "predicate_linkers", "kb")
+    validate_choice(args, "mode", ["chatkbqa_webqsp", "chatkbqa_cwq", "jena", "sparql"])
     return args
 
 
@@ -1089,8 +1089,8 @@ def main():
             f"--linker_params references linker ids not in this run: {sorted(unknown_ids)}"
         )
 
-    extract = args.kb.extract_from_prediction
-    substitute  = args.kb.substitute
+    extract = kb_module.extract_from_prediction
+    substitute  = kb_module.substitute
     
     # Load specified linkers with potentially custom hyperparameters
     entity_linkers = [
