@@ -23,7 +23,7 @@
 
 help:
 	@echo "============================================================"
-	@echo "Bachelor Thesis Pipeline"
+	@echo "Bachelor Thesis: Porting ChatKBQA to Wikidata"
 	@echo "============================================================"
 	@echo
 	@echo "Usage:"
@@ -137,7 +137,7 @@ help-download-wwq:
 	@echo "  A few seconds."
 	@echo
 	@echo "RAM:"
-	@echo "  Negligible"
+	@echo "  Negligible."
 	@echo
 	@echo "Disk:"
 	@echo "  Approximately 5MB."
@@ -209,7 +209,7 @@ help-download-lcquad2:
 	@echo "  A few seconds."
 	@echo
 	@echo "RAM:"
-	@echo "  Negligible"
+	@echo "  Negligible."
 	@echo
 	@echo "Disk:"
 	@echo "  Approximately 10MB."
@@ -223,21 +223,20 @@ help-pipeline:
 	@echo "  Run the complete SPARQL-to-evaluation pipeline."
 	@echo
 	@echo "Reads:"
-	@echo "  RUN_CONFIG=<path to run configuration>"
 	@echo "  Dataset files specified by the configuration"
 	@echo "  Models/checkpoints specified by the configuration"
 	@echo
 	@echo "Produces:"
-	@echo "  Converted S-expressions"
+	@echo "  Converted dataset"
 	@echo "  Label-enriched data"
-	@echo "  LLM training data"
-	@echo "  Model checkpoints"
-	@echo "  Predictions"
+	@echo "  LLaMA-Factory training dataset."
+	@echo "  LoRA adapter/model checkpoint"
+	@echo "  Prediction file"
 	@echo "  Resolved predictions"
 	@echo "  Evaluation results"
 	@echo
 	@echo "Runtime:"
-	@echo "  Dataset and config dependent. Anything from minutes to possibly days."
+	@echo "  Dataset and config dependant. Anything from minutes to possibly days."
 	@echo "  Check the specific pipeline steps for more specific estimates."
 	@echo
 	@echo "RAM:"
@@ -245,7 +244,7 @@ help-pipeline:
 	@echo
 	@echo "Disk:"
 	@echo "  A few GB for the fine-tuned adapter, a few hundred MBs for the actual pipeline steps outputs."
-	@echo "  Very dependent on dataset and config: If the Resolve Step is running in debug mode, a potentially very big (30GB+) debug file is produced."
+	@echo "  Very dependant on dataset and config: If the Resolve Step is running in debug mode, a potentially very big (30GB+) debug file is produced."
 	@echo
 
 help-run:
@@ -290,16 +289,16 @@ help-convert:
 	@echo "  Dataset files specified by RUN_CONFIG."
 	@echo
 	@echo "Produces:"
-	@echo "  S-expression representations."
+	@echo "  Converted dataset."
 	@echo
 	@echo "Runtime:"
-	@echo "  Dataset size dependent; from a few minutes for the smaller datasets (like WebQSP) to around 30 minutes for something like LC-QuAD2"
+	@echo "  Dataset size dependant; from a few minutes for the smaller datasets (like WebQSP) to around 30 minutes for something like LC-QuAD2"
 	@echo
 	@echo "RAM:"
 	@echo "  Memory usage generally scales with dataset size; 32GB of total system RAM should be sufficient for the provided datasets."
 	@echo
 	@echo "Disk:"
-	@echo "  Dataset dependent, but typically a few hundred MBs."
+	@echo "  Dataset dependant, but typically a few hundred MBs."
 	@echo
 help-labels:
 	@echo "============================================================"
@@ -309,11 +308,10 @@ help-labels:
 	@echo "  Insert entity and predicate labels into the converted data."
 	@echo
 	@echo "Reads:"
-	@echo "  Converted S-expression data."
-	@echo "  Knowledge-base label information."
+	@echo "  Converted dataset."
 	@echo
 	@echo "Produces:"
-	@echo "  Label-enriched dataset files."
+	@echo "  Label-enriched data."
 	@echo
 	@echo "Runtime:"
 	@echo "  A few seconds to minutes."
@@ -322,7 +320,7 @@ help-labels:
 	@echo "  Memory usage generally scales with dataset size; 32GB of total system RAM should be sufficient for the provided datasets."
 	@echo
 	@echo "Disk:"
-	@echo "  Dataset dependent, but typically a few hundred MBs."
+	@echo "  Dataset dependant, but typically a few hundred MBs."
 	@echo
 
 help-prepare:
@@ -333,7 +331,7 @@ help-prepare:
 	@echo "  Prepare the processed dataset for LLM fine-tuning."
 	@echo
 	@echo "Reads:"
-	@echo "  Label-enriched dataset."
+	@echo "  Label-enriched data."
 	@echo
 	@echo "Produces:"
 	@echo "  LLaMA-Factory training dataset."
@@ -361,16 +359,16 @@ help-train:
 	@echo "  Training configuration."
 	@echo
 	@echo "Produces:"
-	@echo "  LoRA adapter/model checkpoints."
+	@echo "  LoRA adapter/model checkpoint."
 	@echo
 	@echo "Runtime:"
-	@echo "  Completely config and hardware dependent; Typically 5-10 hours for medium sized datasets (CWQ, WebQSP)."
+	@echo "  Completely config and hardware dependant; Typically 5-10 hours for medium sized datasets (CWQ, WebQSP)."
 	@echo
 	@echo "RAM / VRAM:"
 	@echo "  Dependant on the specific configuration used. If memory is tight and the model is not gigantic, reducing batch size in the training config can help. All experiments fit within the VRAM of a single NVIDIA L40S GPU."
 	@echo
 	@echo "Disk:"
-	@echo "  Approximately a few GBs for the produced adapter, but also config dependent."
+	@echo "  Approximately a few GBs for the produced adapter, but also config dependant."
 	@echo
 
 help-generate:
@@ -381,14 +379,14 @@ help-generate:
 	@echo "  Generate model prediction beams for the evaluation dataset."
 	@echo
 	@echo "Reads:"
-	@echo "  Fine-tuned model/checkpoint."
-	@echo "  Evaluation dataset."
+	@echo "  LoRA adapter/model checkpoint."
+	@echo "  Label-enriched data."
 	@echo
 	@echo "Produces:"
-	@echo "  Raw model prediction beams."
+	@echo "  Prediction file."
 	@echo
 	@echo "Runtime:"
-	@echo "  Dataset, config and hardware dependent. Could take up to a few days, but typically around the 5-10 hour mark for medium datasets (WebQSP, CWQ)."
+	@echo "  Dataset, config and hardware dependant. Could take up to a few days, but typically around the 5-10 hour mark for medium datasets (WebQSP, CWQ)."
 	@echo
 	@echo "RAM:"
 	@echo "  Dependant on the model used. All experiments fit within the VRAM of a single NVIDIA L40S GPU."
@@ -405,8 +403,7 @@ help-resolve:
 	@echo "  Resolve predicted entities and predicates and execute the resulting queries."
 	@echo
 	@echo "Reads:"
-	@echo "  Raw model predictions."
-	@echo "  Knowledge-base/entity-linking data."
+	@echo "  Prediction file."
 	@echo
 	@echo "Produces:"
 	@echo "  Resolved predictions."
@@ -430,8 +427,7 @@ help-eval:
 	@echo "  Evaluate resolved predictions against the gold answers."
 	@echo
 	@echo "Reads:"
-	@echo "  Resolved predictions."
-	@echo "  Gold answers."
+	@echo "  Prediction file."
 	@echo
 	@echo "Produces:"
 	@echo "  Evaluation results."
@@ -456,20 +452,22 @@ help-demo-qald7-full:
 	@echo "Reads:"
 	@echo "  QALD-7 dataset."
 	@echo "  QALD-7 run configuration."
-	@echo "  Base model."
+	@echo "  Qwen2.5-7B Base model."
 	@echo
 	@echo "Produces:"
-	@echo "  Processed datasets."
-	@echo "  Fine-tuned model."
-	@echo "  Predictions."
-	@echo "  Resolved Predictions."
+	@echo "  Converted dataset."
+	@echo "  Label-enriched data."
+	@echo "  LLaMA-Factory training dataset."
+	@echo "  LoRA adapter/model checkpoint"
+	@echo "  Prediction file"
+	@echo "  Resolved predictions."
 	@echo "  Evaluation results."
 	@echo
 	@echo "Runtime:"
 	@echo "  Should not take longer than 8 hours when using GPU for finetuning and generation."
 	@echo
 	@echo "RAM / VRAM:"
-	@echo "  Experiment fit within the VRAM of a single NVIDIA L40S GPU, as well as 32GB system RAM."
+	@echo "  Experiments fit within the VRAM of a single NVIDIA L40S GPU, as well as 32GB system RAM."
 	@echo
 	@echo "Disk:"
 	@echo "  Approximately 4GB between the adapter and script outputs."
@@ -485,10 +483,13 @@ help-demo-qald7-no-train:
 	@echo "Reads:"
 	@echo "  QALD-7 dataset."
 	@echo "  QALD-7 run configuration."
-	@echo "  Existing model/checkpoint."
+	@echo "  LoRA adapter/model checkpoint"
 	@echo
 	@echo "Produces:"
-	@echo "  Predictions."
+	@echo "  Converted dataset."
+	@echo "  Label-enriched data."
+	@echo "  LLaMA-Factory training dataset."
+	@echo "  Prediction file"
 	@echo "  Resolved predictions."
 	@echo "  Evaluation results."
 	@echo
@@ -496,7 +497,7 @@ help-demo-qald7-no-train:
 	@echo "  Should not take longer than 8 hours when using GPU for finetuning and generation."
 	@echo
 	@echo "RAM / VRAM:"
-	@echo "  Experiment fit within the VRAM of a single NVIDIA L40S GPU, as well as 32GB system RAM."
+	@echo "  Experiments fit within the VRAM of a single NVIDIA L40S GPU, as well as 32GB system RAM."
 	@echo
 	@echo "Disk:"
 	@echo "  Approximately 200MB of script outputs."
@@ -510,8 +511,9 @@ help-demo-qald7-no-train-no-generate:
 	@echo "  Run QALD-7 resolution and evaluation using existing predictions."
 	@echo
 	@echo "Reads:"
-	@echo "  Existing predictions."
 	@echo "  QALD-7 run configuration."
+	@echo "  LoRA adapter/model checkpoint"
+	@echo "  Prediction file"
 	@echo
 	@echo "Produces:"
 	@echo "  Resolved predictions."
@@ -643,7 +645,7 @@ eval:
 
 
 # ============================================================
-# Demos (Wikidata / Qald7)
+# Demo (Wikidata Qald7)
 # ============================================================
 
 .PHONY: demo-qald7-full demo-qald7-no-train demo-qald7-no-train-no-generate
