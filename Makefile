@@ -54,6 +54,8 @@ help:
 	@echo
 	@echo "  Note: The full demo requires Qwen2.5-7b to be downloaded to the base model folder. See SETUP.md for more details."
 	@echo "  Similarly, the no_train and no_train_no_generate variants can only be run from an uni-freiburg computer, as they require existing data."
+	@echo "  The config used by the demo specifies an endpoint only accessible on an uni-freiburg computer. Make sure to edit the endpoint of"
+	@echo "  Data/Configs/runs/Wikidata/Qald7/sparql.yaml" accordingly if you do not have access.
 	@echo
 	@echo "For detailed information about a target:"
 	@echo "  make help-<target>"
