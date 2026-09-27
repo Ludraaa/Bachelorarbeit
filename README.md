@@ -14,7 +14,12 @@ git clone https://github.com/Ludraaa/Bachelorarbeit.git
 cd Bachelorarbeit
 ```
 
-For ease of use, a docker image is provided. The commands to both build and run this can be found at the bottom of the `Dockerfile`. You should first take a look at `SETUP.md`. All direct information of what you need to do to use this project can be found in there.
+For ease of use, a docker image is provided. The commands to both build and run this can be found at the bottom of the [Dockerfile](Dockerfile). You should first take a look at [SETUP](SETUP.md). All information regarding the setup required to use this project can be found in there.
+
+### Run Configs
+
+In order to simplify the arguments across all steps of the pipeline, run configurations are used. Each [Makefile](Makefile) target uses a single run config. You can take a look at existing configurations in `Data/Configs/runs`.
+If you want to create a new run config from scratch, all possible options are documented in the [Run config schema](Data/Configs/runs/schema.md).
 
 
 ## AI-Assisted Development
