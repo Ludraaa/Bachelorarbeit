@@ -62,7 +62,7 @@ help:
 	@echo
 	@echo "Examples:"
 	@echo "  make demo-qald7-full"
-	@echo "  make pipeline RUN_CONFIG=configs/runs/Wikidata/Qald7/grisp.yaml"
+	@echo "  make pipeline RUN_CONFIG=configs/runs/Wikidata/Qald7/sparql.yaml"
 	@echo
 
 # ============================================================

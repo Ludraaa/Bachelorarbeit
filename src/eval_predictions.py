@@ -59,27 +59,19 @@ def parse_args():
     )
 
     parser.add_argument("--dataset", help="Dataset name.")
-    parser.add_argument("--split", help="Split: dev / test (/ train).")
-    parser.add_argument("--mode", choices=list(_MODES),
-                        help="Conversion mode used during resolution.")
-    parser.add_argument("--model_id", help="Model identifier.")
-    parser.add_argument("--entity_linkers", help="Comma-seperated list of entity linkers used.")
-    parser.add_argument("--predicate_linkers", help="Comma-seperated list of predicate linkers used.")
-    parser.add_argument("--endpoint_url", default=_DEFAULT_ENDPOINT,
-                        help="SPARQL endpoint URL for execution.")
-    parser.add_argument("--timeout", type=int, default=60,
-                        help="Per-query HTTP timeout in seconds.")
-    parser.add_argument("--get-live-gold", action="store_true", default=False,
-                        help="Execute the gold SPARQL live instead of using stored answers.")
-    parser.add_argument("--live_only", action="store_true", default=False,
-                        help="Ignore saved gold answers entirely and only respect live-executed gold answers.")
-    parser.add_argument("--ledger", default=_DEFAULT_LEDGER,
-                        help="Path to the central results ledger JSON.")
-    parser.add_argument("--note", default="",
-                        help="Free-text note stored in the ledger entry for this run.")
-    parser.add_argument("--max_samples", type=int, help="Cap number of items evaluated (debug).")
-    parser.add_argument("--skip_analysis", action="store_true", default=False,
-                        help="Skip the distribution/hyperparameter-sensitivity analysis and plots.")
+    parser.add_argument("--split")
+    parser.add_argument("--mode", choices=list(_MODES))
+    parser.add_argument("--model_id")
+    parser.add_argument("--entity_linkers")
+    parser.add_argument("--predicate_linkers")
+    parser.add_argument("--endpoint_url", default=_DEFAULT_ENDPOINT)
+    parser.add_argument("--timeout", type=int, default=60,)
+    parser.add_argument("--get-live-gold", action="store_true", default=False)
+    parser.add_argument("--live_only", action="store_true", default=False)
+    parser.add_argument("--ledger", default=_DEFAULT_LEDGER)
+    parser.add_argument("--note", default="")
+    parser.add_argument("--max_samples", type=int)
+    parser.add_argument("--skip_analysis", action="store_true", default=False)
     parser.add_argument("--run_config", type=str)
 
     apply_run_config_defaults(parser, section="eval")

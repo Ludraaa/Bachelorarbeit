@@ -105,63 +105,26 @@ def _has_gold_answer(item: dict) -> bool:
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--dataset",   type=str)
-    parser.add_argument("--split",     type=str, default="test")
+    parser.add_argument("--dataset", type=str, help= "Dataset name")
+    parser.add_argument("--split",     type=str, default="test", help="Split to process")
     parser.add_argument("--mode", type=str, default="sparql")
     parser.add_argument("--model_id",  type=str)
     parser.add_argument("--data_dir",  type=str, default=os.environ.get("DATA_DIR", "data"))
-
-    parser.add_argument(
-        "--entity_linkers",
-        type=str,
-        help=(
-            "Comma-separated ordered list of entity linker IDs. Each linker "
-            "only sees labels still unresolved by the ones before it, "
-            "mirroring ChatKBQA's type_map -> gold -> SimCSE -> FACC1 cascade. "
-            "Example: --entity_linkers type_map,gold_exact,gold_simcse,facc1"
-        ),
-    )
-
-    parser.add_argument(
-        "--predicate_linkers",
-        type=str,
-        help=(
-            "Comma-separated ordered list of predicate linker IDs. "
-            "Each item is tried across all beams before the next is attempted. "
-            "Example: --predicate_linkers label_norm,neighborhood_simcse"
-        ),
-    )
-
+    parser.add_argument("--entity_linkers", type=str)
+    parser.add_argument("--predicate_linkers",type=str)
     parser.add_argument("--kb", type=str)
-
     parser.add_argument("--max_samples", type=int)
-
-
-    parser.add_argument("--k1_per_pass", type=str, default="25",
-                        help="Comma-separated k1 per predicate-linker pass (single value broadcast to all passes).")
-    parser.add_argument("--t1_per_pass", type=str, default="0.0",
-                        help="Comma-separated t1 per predicate-linker pass (single value broadcast to all passes).")
-    parser.add_argument("--k2_per_pass", type=str, default="5",
-                        help="Comma-separated k2 per predicate-linker pass (single value broadcast to all passes).")
-    parser.add_argument("--t2_per_pass", type=str, default="0.0",
-                        help="Comma-separated t2 per predicate-linker pass (single value broadcast to all passes).")
-
-    parser.add_argument("--beam_limits", type=str, default="8",
-                        help=
-            "Comma-separated per-pass beam caps, one per predicate linker (use 0 for no limit, last value is reused). ")
-
-    parser.add_argument("--linker_params", type=str, default="{}",
-        help=(
-            'JSON dict overriding constructor kwargs per linker id: '
-            '\'{"ChatKBQA.gold_simcse": {"gold_threshold": 0.5}}\'. '
-            'Applies to both entity and predicate linkers by id.'
-        ),
-    )
-    parser.add_argument("--item_time_limit_sec",type=float, help=("Optional total time budget per item, in seconds. "))
-    parser.add_argument("--note", type=str, default="", help="Optional free-text note stored in the output metadata.")
+    parser.add_argument("--k1_per_pass", type=str, default="25")
+    parser.add_argument("--t1_per_pass", type=str, default="0.0")
+    parser.add_argument("--k2_per_pass", type=str, default="5")
+    parser.add_argument("--t2_per_pass", type=str, default="0.0")
+    parser.add_argument("--beam_limits", type=str, default="8")
+    parser.add_argument("--linker_params", type=str, default="{}")
+    parser.add_argument("--item_time_limit_sec",type=float)
+    parser.add_argument("--note", type=str, default="")
     parser.add_argument("--label_fallback", action="store_true")
     parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--run_config", type=str)
+    parser.add_argument("--run_config", type=str, help="Path to configs/run/<name>.yaml")
 
     apply_run_config_defaults(parser, section="resolve")
 

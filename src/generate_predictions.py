@@ -24,13 +24,9 @@ def parse_args():
     parser.add_argument("--num_beams", type=int, default=8)
     parser.add_argument("--max_new_tokens", type=int, default=512)
     parser.add_argument("--max_samples", type=int)
-    parser.add_argument("--diversity_penalty", type=float, default=0.5,
-                        help="Diversity penalty for group beam search. "
-                             "Higher values = more diverse but potentially less coherent outputs. "
-                             "Recommended: ~1.0 for Llama, ~0.5 for Qwen")
+    parser.add_argument("--diversity_penalty", type=float, default=0.5)
     parser.add_argument("--run_config", type=str)
-    parser.add_argument("--oracle", action="store_true",
-                        help="Skip inference and directly output the ground truth (sexpr_with_labels) as the single prediction.")
+    parser.add_argument("--oracle", action="store_true")
 
     apply_run_config_defaults(parser, section="generate", config_ref_key="infer_config")
 
@@ -70,13 +66,7 @@ def build_question(raw_question: str) -> str:
     return f"{INSTRUCTION}\n\nQuestion: {{ {raw_question} }}"
 
 
-def generate_beams(
-    engine,
-    messages: list[dict],
-    num_beams: int,
-    max_new_tokens: int,
-    diversity_penalty: float
-) -> list[str]:
+def generate_beams(engine, messages: list[dict], num_beams: int, max_new_tokens: int, diversity_penalty: float) -> list[str]:
     """
     Generate requested number of prediction beams using group beam search.
     Duplicate beams are removed from the prediction list at the end.
@@ -218,28 +208,28 @@ def _build_meta(
     total_beams = sum(beam_counts)
 
     return {
-        "timestamp":           datetime.now(timezone.utc).isoformat(),
-        "dataset":             args.dataset,
-        "split":               args.split,
-        "mode":                args.mode,
-        "model_id":            model_id,
-        "oracle":              args.oracle,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "dataset": args.dataset,
+        "split": args.split,
+        "mode": args.mode,
+        "model_id": model_id,
+        "oracle": args.oracle,
         "num_beams_requested": args.num_beams,
-        "max_new_tokens":      args.max_new_tokens,
-        "diversity_penalty":   args.diversity_penalty,
-        "num_items":           num_items,
+        "max_new_tokens": args.max_new_tokens,
+        "diversity_penalty": args.diversity_penalty,
+        "num_items": num_items,
 
         # exact match
         "gold_in_beams_count": gold_hit_count,
-        "gold_in_beams_pct":   round(gold_hit_count / num_items * 100, 2) if num_items else 0.0,
+        "gold_in_beams_pct": round(gold_hit_count / num_items * 100, 2) if num_items else 0.0,
         "gold_at_rank0_count": rank0_hit_count,
-        "gold_at_rank0_pct":   round(rank0_hit_count / num_items * 100, 2) if num_items else 0.0,
+        "gold_at_rank0_pct": round(rank0_hit_count / num_items * 100, 2) if num_items else 0.0,
 
         # beam count distribution 
-        "mean_beams_per_item":   round(mean_beams, 3),
+        "mean_beams_per_item": round(mean_beams, 3),
         "median_beams_per_item": median_beams,
-        "min_beams":             min(beam_counts) if beam_counts else 0,
-        "max_beams":             max(beam_counts) if beam_counts else 0,
+        "min_beams": min(beam_counts) if beam_counts else 0,
+        "max_beams": max(beam_counts) if beam_counts else 0,
     }
 
 
